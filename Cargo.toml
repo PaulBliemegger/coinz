@@ -1,0 +1,12 @@
+[workspace]
+members = ["backend"]
+resolver = "3"
+
+[profile.release]
+strip = true
+lto = "thin"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+

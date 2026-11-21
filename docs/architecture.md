@@ -1,0 +1,97 @@
+# Architecture and repository structure
+
+Status: the foundation is implemented. Browser and container runtime verification
+remain pending. Product behavior lives in [specs](specs/README.md); commands and
+operations live in the [README](../README.md).
+
+## Runtime
+
+One Rust/Axum process serves `/api` and the built SvelteKit 3 static interface.
+SQLite uses SQLx, versioned migrations, foreign keys, WAL, and a busy timeout.
+There is one Rust crate and one frontend package. Docker uses separate build
+stages; only the binary, static assets, and runtime system dependencies ship.
+
+During development, Vite serves the UI and proxies `/api` to Rust. Deployment uses
+one origin. Rust owns authorization, validation, persistence, and financial
+calculations. The browser owns interaction and exact presentation of cents
+strings. Credentials/CSRF handling stay at the HTTP boundary.
+
+Rust is an intentional learning choice, not a response to high throughput needs.
+SQLite avoids a separate service for personal use. Responsive web covers laptop
+and phone use; native packaging and offline synchronization are deferred.
+
+## Current layout
+
+```text
+AGENTS.md                 Overall conventions and working agreement
+backend/
+  AGENTS.md               Rust-specific conventions
+  src/
+    main.rs               CLI, configuration, server lifecycle
+    lib.rs                Application/router assembly
+    auth.rs               Identity, sessions, CSRF
+    ledger.rs             Accounts, entries, summaries and their SQL
+    domain.rs             Pure parsing/calculation rules
+    db.rs                 SQLite setup and migrations
+    error.rs              Shared safe API errors
+  migrations/             Versioned SQL
+  tests/ledger.rs         Real database and API integration tests
+frontend/
+  AGENTS.md               Svelte/TypeScript conventions
+  src/routes/             Screen composition and page styles
+  src/lib/api.ts          HTTP types/client and session token boundary
+  src/lib/money.ts        Exact amount/date display helpers
+  tests/                  Focused frontend logic tests
+  e2e/                    Browser journeys and isolated test server
+scripts/                  Small development helpers
+.githooks/                Explicitly installed Git hooks
+docs/
+  product.md              Goals, scope, sequencing, open product choices
+  architecture.md         Runtime, boundaries, structure and major tradeoffs
+  specs/                  Detailed behavior and acceptance examples by feature
+  agent-testing.md        Sandbox-specific test guidance
+Dockerfile / compose.yaml Deployment definition
+Makefile                  Named, repeatable development/check commands
+```
+
+## How this grows
+
+Use a light hybrid: feature modules for application behavior and a small shared
+infrastructure boundary. Do not organize the whole app into global controllers,
+services, repositories, and DTO directories, which scatter each feature.
+
+Keep the present flat Rust modules while they remain understandable. As a feature
+grows, a module such as `ledger.rs` can become `ledger/` with only the submodules
+it needs: HTTP handlers, operations, queries, or types. Imports should have their
+own source adapters and normalization logic rather than being added to ledger
+handlers. Pure financial rules remain independently testable. Cross-feature
+operations should call explicit operations, not another feature's HTTP handler.
+
+On the frontend, routes compose feature components. Extract account/transaction
+forms and ledger panels when changing those independently. Once justified, keep
+related UI under `src/lib/features/ledger/` or `features/imports/`; shared UI
+primitives belong under `src/lib/components/` only when reused. Avoid empty
+scaffolding directories, generic utility collections, and required layers.
+
+## Guardrails
+
+- Ownership comes from the server session and is enforced in database operations,
+  including related account/entry IDs.
+- Exact financial rules, dates, source provenance, and incomplete-history semantics
+  follow the feature/product specs. Schema constraints and tests reinforce them.
+- Mutations and dependent balance checks are atomic. SQLite writes requiring the
+  current balance begin with `BEGIN IMMEDIATE` to serialize validation.
+- Password hashing uses Argon2id; `tower-sessions` and its SQLx SQLite store manage
+  opaque sessions. No custom crypto or session-token implementation.
+- Migrations run on connection/startup. Expired session records are cleaned at app
+  assembly; session loading enforces expiry. Additional cleanup can follow usage.
+- Tests use synthetic data and temporary databases. Full checks run through
+  `make check`; CI should reuse those commands when added.
+
+## Decision records
+
+Keep the rationale above while it is short. Introduce `docs/decisions/` only when
+an important tradeoff needs a longer durable explanation (for example changing
+storage or adding synchronization). Record context, choice, consequences, and
+supersession; do not duplicate feature specifications or add records for routine
+implementation choices.

@@ -1,0 +1,20 @@
+services:
+  coinz:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      COINZ_ORIGIN: "http://localhost:3000"
+      COINZ_COOKIE_SECURE: "false"
+    volumes:
+      - coinz-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  coinz-data:
