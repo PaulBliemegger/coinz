@@ -9,96 +9,66 @@ use axum::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqliteConnection, SqlitePool};
+use sqlx::{FromRow, SqlitePool};
 use tower_sessions::Session;
 use uuid::Uuid;
 
-#[derive(FromRow)]
-struct AccountRow {
-    id: String,
+#[derive(Serialize, FromRow)]
+pub struct Source {
+    pub id: String,
     name: String,
-    opening_date: String,
-    opening_cents: i64,
-}
-
-#[derive(Serialize)]
-pub struct Account {
-    id: String,
-    name: String,
-    opening_date: String,
-    opening_cents: String,
-    balance_cents: String,
     latest_transaction_date: Option<String>,
 }
 
 #[derive(Deserialize)]
-pub struct NewAccount {
+#[serde(deny_unknown_fields)]
+pub struct NewSource {
     name: String,
-    opening_date: String,
-    opening_balance: String,
 }
 
-async fn owned_account(pool: &SqlitePool, owner: &str, id: &str) -> Result<AccountRow> {
-    sqlx::query_as::<_, AccountRow>(
-        "SELECT id, name, opening_date, opening_cents FROM accounts WHERE id = ? AND user_id = ?",
+pub(crate) async fn owned_source(pool: &SqlitePool, owner: &str, id: &str) -> Result<()> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM transaction_sources WHERE id = ? AND user_id = ?)",
     )
     .bind(id)
     .bind(owner)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(AppError::not_found)
-}
-
-pub async fn accounts(
-    State(state): State<AppState>,
-    session: Session,
-) -> Result<Json<Vec<Account>>> {
-    let user = auth::user(&session, &state.pool).await?;
-    let rows = sqlx::query_as::<_, AccountRow>("SELECT id, name, opening_date, opening_cents FROM accounts WHERE user_id = ? ORDER BY created_at, id")
-        .bind(&user.id).fetch_all(&state.pool).await?;
-    let mut result = Vec::with_capacity(rows.len());
-    for row in rows {
-        let amounts: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT amount_cents, date FROM transactions WHERE account_id = ? AND user_id = ?",
-        )
-        .bind(&row.id)
-        .bind(&user.id)
-        .fetch_all(&state.pool)
-        .await?;
-        let balance = domain::checked_total(
-            std::iter::once(row.opening_cents).chain(amounts.iter().map(|(amount, _)| *amount)),
-        )?;
-        result.push(Account {
-            id: row.id,
-            name: row.name,
-            opening_date: row.opening_date,
-            opening_cents: row.opening_cents.to_string(),
-            balance_cents: balance.to_string(),
-            latest_transaction_date: amounts.iter().map(|(_, date)| date).max().cloned(),
-        });
+    .fetch_one(pool)
+    .await?;
+    if !exists {
+        return Err(AppError::not_found());
     }
-    Ok(Json(result))
+    Ok(())
 }
 
-pub async fn create_account(
+pub async fn sources(State(state): State<AppState>, session: Session) -> Result<Json<Vec<Source>>> {
+    let user = auth::user(&session, &state.pool).await?;
+    let rows = sqlx::query_as::<_, Source>(
+        "SELECT a.id, a.name, (SELECT MAX(t.date) FROM transactions t WHERE t.source_id = a.id AND t.user_id = a.user_id) AS latest_transaction_date FROM transaction_sources a WHERE a.user_id = ? ORDER BY a.created_at, a.id")
+        .bind(user.id).fetch_all(&state.pool).await?;
+    Ok(Json(rows))
+}
+
+pub async fn create_source(
     State(state): State<AppState>,
     session: Session,
-    Json(input): Json<NewAccount>,
+    Json(input): Json<NewSource>,
 ) -> Result<(StatusCode, Json<serde_json::Value>)> {
     let user = auth::user(&session, &state.pool).await?;
-    let name = domain::text(&input.name, "Account name", 80)?;
-    let opening_date = domain::date(&input.opening_date)?.to_string();
-    let opening_cents = domain::parse_money(&input.opening_balance)?;
+    let name = domain::text(&input.name, "Source name", 80)?;
     let id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO accounts (id, user_id, name, opening_date, opening_cents) VALUES (?, ?, ?, ?, ?)")
-        .bind(&id).bind(user.id).bind(name).bind(opening_date).bind(opening_cents).execute(&state.pool).await?;
+    sqlx::query("INSERT INTO transaction_sources (id, user_id, name) VALUES (?, ?, ?)")
+        .bind(&id)
+        .bind(user.id)
+        .bind(name)
+        .execute(&state.pool)
+        .await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
 
 #[derive(Deserialize)]
 pub struct Filter {
     month: Option<String>,
-    account_id: Option<String>,
+    source_id: Option<String>,
 }
 
 impl Filter {
@@ -108,8 +78,8 @@ impl Filter {
             .clone()
             .unwrap_or_else(|| Utc::now().format("%Y-%m").to_string());
         let (start, end) = domain::month_range(&month)?;
-        if let Some(id) = &self.account_id {
-            owned_account(pool, owner, id).await?;
+        if let Some(id) = &self.source_id {
+            owned_source(pool, owner, id).await?;
         }
         Ok((month, start, end))
     }
@@ -118,8 +88,8 @@ impl Filter {
 #[derive(FromRow)]
 struct TransactionRow {
     id: String,
-    account_id: String,
-    account_name: String,
+    source_id: Option<String>,
+    source_name: Option<String>,
     date: String,
     description: String,
     amount_cents: i64,
@@ -128,8 +98,8 @@ struct TransactionRow {
 #[derive(Serialize)]
 pub struct Transaction {
     id: String,
-    account_id: String,
-    account_name: String,
+    source_id: Option<String>,
+    source_name: Option<String>,
     date: String,
     description: String,
     amount_cents: String,
@@ -142,16 +112,16 @@ async fn filtered_rows(
 ) -> Result<(String, Vec<TransactionRow>)> {
     let (month, start, end) = filter.bounds(pool, owner).await?;
     let rows = sqlx::query_as::<_, TransactionRow>(
-        "SELECT t.id, t.account_id, a.name AS account_name, t.date, t.description, t.amount_cents
-         FROM transactions t JOIN accounts a ON a.id = t.account_id AND a.user_id = t.user_id
-         WHERE t.user_id = ? AND t.date >= ? AND t.date < ? AND (? IS NULL OR t.account_id = ?)
+        "SELECT t.id, t.source_id, a.name AS source_name, t.date, t.description, t.amount_cents
+         FROM transactions t LEFT JOIN transaction_sources a ON a.id = t.source_id AND a.user_id = t.user_id
+         WHERE t.user_id = ? AND t.date >= ? AND t.date < ? AND (? IS NULL OR t.source_id = ?)
          ORDER BY t.date DESC, t.created_at DESC, t.id DESC",
     )
     .bind(owner)
     .bind(start)
     .bind(end)
-    .bind(&filter.account_id)
-    .bind(&filter.account_id)
+    .bind(&filter.source_id)
+    .bind(&filter.source_id)
     .fetch_all(pool)
     .await?;
     Ok((month, rows))
@@ -168,8 +138,8 @@ pub async fn transactions(
         rows.into_iter()
             .map(|row| Transaction {
                 id: row.id,
-                account_id: row.account_id,
-                account_name: row.account_name,
+                source_id: row.source_id,
+                source_name: row.source_name,
                 date: row.date,
                 description: row.description,
                 amount_cents: row.amount_cents.to_string(),
@@ -179,8 +149,9 @@ pub async fn transactions(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NewTransaction {
-    account_id: String,
+    source_id: Option<String>,
     date: String,
     description: String,
     amount: String,
@@ -189,40 +160,15 @@ pub struct NewTransaction {
 
 impl NewTransaction {
     async fn validate(&self, pool: &SqlitePool, owner: &str) -> Result<(String, i64)> {
-        let account = owned_account(pool, owner, &self.account_id).await?;
-        let date = domain::date(&self.date)?;
-        if date.to_string() < account.opening_date {
-            return Err(AppError::invalid(
-                "The transaction date must be on or after the account's opening date.",
-            ));
+        if let Some(id) = &self.source_id {
+            owned_source(pool, owner, id).await?;
         }
+        domain::date(&self.date)?;
         Ok((
             domain::text(&self.description, "Description", 200)?,
             self.kind.amount(&self.amount)?,
         ))
     }
-}
-
-async fn validate_balance(
-    conn: &mut SqliteConnection,
-    owner: &str,
-    account_id: &str,
-) -> Result<()> {
-    let opening: i64 =
-        sqlx::query_scalar("SELECT opening_cents FROM accounts WHERE id = ? AND user_id = ?")
-            .bind(account_id)
-            .bind(owner)
-            .fetch_one(&mut *conn)
-            .await?;
-    let amounts: Vec<i64> = sqlx::query_scalar(
-        "SELECT amount_cents FROM transactions WHERE account_id = ? AND user_id = ?",
-    )
-    .bind(account_id)
-    .bind(owner)
-    .fetch_all(&mut *conn)
-    .await?;
-    domain::checked_total(std::iter::once(opening).chain(amounts))?;
-    Ok(())
 }
 
 pub async fn create_transaction(
@@ -234,9 +180,8 @@ pub async fn create_transaction(
     let (description, amount) = input.validate(&state.pool, &user.id).await?;
     let id = Uuid::new_v4().to_string();
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
-    sqlx::query("INSERT INTO transactions (id, user_id, account_id, date, description, amount_cents) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(&id).bind(&user.id).bind(&input.account_id).bind(input.date).bind(description).bind(amount).execute(&mut *tx).await?;
-    validate_balance(&mut tx, &user.id, &input.account_id).await?;
+    sqlx::query("INSERT INTO transactions (id, user_id, source_id, date, description, amount_cents) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(&id).bind(&user.id).bind(&input.source_id).bind(input.date).bind(description).bind(amount).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
@@ -250,21 +195,10 @@ pub async fn update_transaction(
     let user = auth::user(&session, &state.pool).await?;
     let (description, amount) = input.validate(&state.pool, &user.id).await?;
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
-    let old_account: String =
-        sqlx::query_scalar("SELECT account_id FROM transactions WHERE id = ? AND user_id = ?")
-            .bind(&id)
-            .bind(&user.id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(AppError::not_found)?;
-    let result = sqlx::query("UPDATE transactions SET account_id = ?, date = ?, description = ?, amount_cents = ? WHERE id = ? AND user_id = ?")
-        .bind(&input.account_id).bind(input.date).bind(description).bind(amount).bind(id).bind(&user.id).execute(&mut *tx).await?;
+    let result = sqlx::query("UPDATE transactions SET source_id = ?, date = ?, description = ?, amount_cents = ? WHERE id = ? AND user_id = ?")
+        .bind(&input.source_id).bind(input.date).bind(description).bind(amount).bind(id).bind(&user.id).execute(&mut *tx).await?;
     if result.rows_affected() == 0 {
         return Err(AppError::not_found());
-    }
-    validate_balance(&mut tx, &user.id, &old_account).await?;
-    if old_account != input.account_id {
-        validate_balance(&mut tx, &user.id, &input.account_id).await?;
     }
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -277,16 +211,13 @@ pub async fn delete_transaction(
 ) -> Result<StatusCode> {
     let user = auth::user(&session, &state.pool).await?;
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
-    // RETURNING captures the account from the row actually changed, even with concurrent requests.
-    let account: String = sqlx::query_scalar(
-        "DELETE FROM transactions WHERE id = ? AND user_id = ? RETURNING account_id",
-    )
-    .bind(id)
-    .bind(&user.id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(AppError::not_found)?;
-    validate_balance(&mut tx, &user.id, &account).await?;
+    let _deleted: String =
+        sqlx::query_scalar("DELETE FROM transactions WHERE id = ? AND user_id = ? RETURNING id")
+            .bind(id)
+            .bind(&user.id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(AppError::not_found)?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

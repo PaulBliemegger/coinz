@@ -62,10 +62,7 @@ pub async fn app(
         .route("/session", get(auth::session_info))
         .route("/login", post(auth::login))
         .route("/logout", post(auth::logout))
-        .route(
-            "/accounts",
-            get(ledger::accounts).post(ledger::create_account),
-        )
+        .route("/sources", get(ledger::sources).post(ledger::create_source))
         .route(
             "/transactions",
             get(ledger::transactions).post(ledger::create_transaction),

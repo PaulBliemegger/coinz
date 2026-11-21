@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('login, account, exact totals, editing, filtering, and logout', async ({ page }, testInfo) => {
+test('manual entry without setup, optional sources, exact totals, editing, and logout', async ({
+  page,
+}, testInfo) => {
   const browserErrors: string[] = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
@@ -8,13 +10,8 @@ test('login, account, exact totals, editing, filtering, and logout', async ({ pa
   await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Where did it go?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Add your first account' }).click();
-  const accountDialog = page.getByRole('dialog', { name: 'Add an account' });
-  await accountDialog.getByLabel('Account name').fill('N26');
-  await accountDialog.getByLabel('Opening date').fill('2026-11-01');
-  await accountDialog.getByLabel('Opening balance').fill('1000.00');
-  await accountDialog.getByRole('button', { name: 'Create account' }).click();
-  await expect(accountDialog).not.toBeVisible();
+  await expect(page.getByRole('button', { name: '+ Add transaction', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Accounts', exact: true })).toHaveCount(0);
 
   for (const entry of [
     { kind: 'Income', description: 'Salary', amount: '2000', date: '2026-11-02' },
@@ -31,13 +28,11 @@ test('login, account, exact totals, editing, filtering, and logout', async ({ pa
   }
   await expect(page.getByTestId('spending')).toHaveText('€12.34');
   await expect(page.getByTestId('income')).toHaveText('€2,000.00');
-  await expect(page.getByRole('region', { name: 'N26 account' })).toContainText('€2,987.66');
   await page.getByRole('button', { name: 'Edit A very precise lunch' }).click();
   const editDialog = page.getByRole('dialog', { name: 'Edit transaction' });
   await editDialog.getByLabel('Amount').fill('13.34');
   await editDialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByTestId('spending')).toHaveText('€13.34');
-  await expect(page.getByRole('region', { name: 'N26 account' })).toContainText('€2,986.66');
   await page.getByLabel('Month', { exact: true }).fill('2026-12');
   await expect(page.getByTestId('spending')).toHaveText('€0.00');
   await expect(
@@ -53,6 +48,24 @@ test('login, account, exact totals, editing, filtering, and logout', async ({ pa
     path: testInfo.outputPath(`coinz-${testInfo.project.name}.png`),
     fullPage: true,
   });
+  // Optional provenance can be added to an existing manual entry without changing totals.
+  await page.getByRole('button', { name: 'Edit A very precise lunch' }).click();
+  await page.getByRole('button', { name: '+ Add source', exact: true }).click();
+  const sourceDialog = page.getByRole('dialog', { name: 'Add a source' });
+  await sourceDialog.getByLabel('Source name').fill('N26');
+  await sourceDialog.getByRole('button', { name: 'Create source' }).click();
+  await expect(sourceDialog).not.toBeVisible();
+  await expect(editDialog.getByLabel('Source (optional)', { exact: true })).not.toHaveValue('');
+  await editDialog.getByRole('button', { name: 'Save changes' }).click();
+  await page.getByLabel('Source', { exact: true }).selectOption({ label: 'N26' });
+  await expect(page.getByTestId('spending')).toHaveText('€13.34');
+  await expect(page.getByTestId('income')).toHaveText('€0.00');
+  await page.getByLabel('Source', { exact: true }).selectOption('');
+  await expect(page.getByTestId('income')).toHaveText('€2,000.00');
+  await page.getByRole('button', { name: 'Edit A very precise lunch' }).click();
+  await editDialog.getByLabel('Source (optional)', { exact: true }).selectOption('');
+  await editDialog.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByTestId('spending')).toHaveText('€13.34');
   expect(browserErrors).toEqual([]);
   await page.getByRole('button', { name: 'Log out' }).click();
   await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();

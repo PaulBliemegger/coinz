@@ -6,18 +6,15 @@ export interface Session {
   user: User | null;
   csrf_token: string;
 }
-export interface Account {
+export interface Source {
   id: string;
   name: string;
-  opening_date: string;
-  opening_cents: string;
-  balance_cents: string;
   latest_transaction_date: string | null;
 }
 export interface Transaction {
   id: string;
-  account_id: string;
-  account_name: string;
+  source_id: string | null;
+  source_name: string | null;
   date: string;
   description: string;
   amount_cents: string;
@@ -31,9 +28,9 @@ export interface Summary {
 }
 
 let csrf = '';
-export function ledgerQuery(month: string, accountId: string): string {
+export function ledgerQuery(month: string, sourceId: string): string {
   const query = new URLSearchParams({ month });
-  if (accountId) query.set('account_id', accountId);
+  if (sourceId) query.set('source_id', sourceId);
   return query.toString();
 }
 

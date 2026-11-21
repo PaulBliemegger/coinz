@@ -10,6 +10,11 @@ The earlier request for an outside-sandbox test run was declined. That permissio
 has not been changed or worked around. Ordinary terminal runs use their own OS
 permissions, independent of the agent sandbox.
 
+The synthetic runner bounds Tokio workers and supplies its fake password through
+a temporary file descriptor, avoiding a Node piped-stdin startup stall observed in
+this environment. With that fixed, the backend exits with `Operation not permitted`
+at local-server startup in the sandbox. This is distinct from browser assertions.
+
 ## Sandboxed local networking
 
 Codex permission profiles can allow networking while retaining filesystem

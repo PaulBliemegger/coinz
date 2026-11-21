@@ -5,16 +5,35 @@ dry humor. Rust/Axum serves a static SvelteKit interface and stores data in SQLi
 
 ## Current state
 
-Implemented: local user creation, login/logout, isolated user data, accounts with
-opening balances, manual income and expenses, editing/deleting transactions,
-month/account filters, recorded balances, and monthly totals.
+Implemented: local user creation, login/logout, isolated user data, manual income
+and expenses without setup, optional source metadata, editing/deleting entries,
+month/source filters, and recorded monthly income/spending/net totals.
 
-Planned: bank CSV imports, labels, Excel migration, richer reports, budgets, and
-projections. See [product scope](docs/product.md) for the agreed sequence.
+The core is Transactions, Insights, and Planning. Richer insights, labels, CSVs,
+and planning remain future work; no empty placeholder screens are added. Bank
+balance tracking and reconciliation are not required. A balance-based What-if
+calculator may follow when useful. See [product scope](docs/product.md) and the
+[planning direction](docs/specs/planning.md).
 
-The Docker image has built successfully. Backend tests and frontend static checks
-have passed. Browser journeys and container startup/persistence verification are
-still outstanding; this is an early development version.
+Migration 0003 preserves old account names/IDs as transaction sources and makes the
+entry source optional. Old opening figures and snapshots remain stored but have
+no active screen/API and do not affect reports. Back up private data before
+reviewing/deploying changes; the agent does not inspect your running database.
+
+Rust tests/lint, frontend checks/tests, and native production builds pass. Browser
+journeys remain unverified: the sandbox denies the synthetic server's local socket.
+An earlier Docker image built successfully; this revision has not been deployed or
+verified against a running container by the agent. This is an early development
+version.
+
+## Real data privacy
+
+Before entering real finances, read [privacy and development isolation](docs/privacy.md).
+Use a development VM with synthetic data and a separate private runtime. The
+current agent permissions, Git ignore rules, and default Compose network do not
+guarantee that real data is inaccessible or unable to leave the laptop. Do not
+expose the private database, app, logs, browser profile, or host Docker daemon to
+the development agent.
 
 ## Run with Docker Compose
 

@@ -343,11 +343,7 @@ select {
   font-size: 0.8125rem;
   margin: 0.8rem 0 2.5rem;
 }
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 270px;
-  gap: 2.5rem;
-}
+
 .section-heading {
   display: flex;
   align-items: center;
@@ -383,7 +379,7 @@ td {
   border-bottom: 1px solid var(--line);
 }
 .entry-date,
-.entry-account {
+.entry-source {
   color: var(--muted);
 }
 .entry-description {
@@ -424,71 +420,7 @@ td {
   font-size: 0.875rem;
   line-height: 1.7;
 }
-.empty-mark {
-  font-family: 'Lora', Georgia, serif;
-  font-size: 3rem;
-  font-style: italic;
-  line-height: 1;
-  color: var(--accent);
-}
-.accounts-panel {
-  border-left: 1px solid var(--line);
-  padding-left: 1.7rem;
-  min-width: 0;
-}
-.accounts-panel h2 {
-  font-size: 1.35rem;
-}
-.account-explainer {
-  margin: -0.5rem 0 0.6rem;
-}
-.account-item {
-  padding: 1.25rem 0;
-  border-bottom: 1px solid var(--line);
-}
-.account-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.account-row h3 {
-  overflow-wrap: anywhere;
-}
-.account-monogram {
-  display: grid;
-  place-items: center;
-  background: var(--soft);
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  font-size: 0.8125rem;
-  flex-shrink: 0;
-}
-.account-balance {
-  font-size: 1.45rem;
-  font-variant-numeric: tabular-nums;
-  margin: 0.6rem 0 0.4rem;
-  overflow-wrap: anywhere;
-}
-.account-date {
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-.account-caveat {
-  color: var(--muted);
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-}
-.no-accounts {
-  padding: 1rem 0;
-}
-.aside-footnote {
-  color: var(--muted);
-  font-size: 0.8125rem;
-  line-height: 1.65;
-  margin-top: 1.3rem;
-}
+
 footer {
   border-top: 1px solid var(--line);
   margin-top: 3.5rem;
@@ -598,10 +530,6 @@ dialog form {
   }
 }
 @media (max-width: 1100px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 1.5rem;
-  }
   .accounts-panel {
     padding-left: 1.2rem;
   }
@@ -620,34 +548,22 @@ dialog form {
   }
 }
 @media (max-width: 850px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
   .accounts-panel {
     border-left: 0;
     padding-left: 0;
     border-top: 1px solid var(--line);
     padding-top: 1.5rem;
   }
-  .account-item {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 1.5rem;
-  }
+
   .account-row {
     grid-row: 1 / 3;
     align-items: flex-start;
   }
-  .account-monogram {
-    display: none;
-  }
+
   .account-balance {
     margin: 0;
   }
-  .account-date,
-  .account-caveat {
-    grid-column: 2;
-  }
+
   .login-page {
     gap: 2.5rem;
     padding: 3rem 2rem;
@@ -764,7 +680,7 @@ dialog form {
     grid-row: 2;
     font-size: 0.875rem;
   }
-  .entry-account {
+  .entry-source {
     grid-column: 1;
     grid-row: 3;
     align-self: center;
@@ -820,4 +736,22 @@ dialog form {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+}
+
+.source-help {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.source-help .form-help {
+  flex: 1;
+  margin: 0;
+  min-width: 160px;
 }

@@ -1,6 +1,7 @@
 # Manual ledger
 
-Status: implemented; browser and container runtime verification pending.
+Status: implemented; browser verification remains pending.
+Manual tracking is independent of accounts and balances. Sources are optional metadata.
 Purpose: record personal EUR finances accurately while making incomplete history
 visible. [Product scope](../product.md) owns the general recorded-figure semantics.
 
@@ -15,104 +16,106 @@ with seven-day inactivity expiry. Login rotates the session ID and CSRF token;
 logout invalidates the session. Failed login uses a generic credential error.
 HTTPS deployments enable the Secure cookie flag.
 
-Private reads and writes require a valid user. Account or transaction IDs owned
+Private reads and writes require a valid user. Source or transaction IDs owned
 by someone else produce the same not-found result as nonexistent IDs. List and
 summary responses never include another user's data. Cookie-authenticated writes,
 including login/logout, require the CSRF token obtained from the session endpoint.
 An Origin header, if supplied, must match the configured browser origin.
 
-## Accounts and money
+## Optional sources and exact amounts
 
-An account has a name (1–80 trimmed characters), opening calendar date, and signed
-opening balance. It belongs to its creator and uses EUR. The opening balance is
-at the start of that date, before recorded transactions for that date. It affects
-the recorded balance, never income/spending. Account editing/deletion is deferred.
+A source has an owned ID, a trimmed name of 1–80 characters, and a latest entry date
+when known. It identifies provenance such as N26, Erste, cash, or a distinct export
+stream. Creating a source requires no balance. Source names are not unique and are
+not identity keys for deduplication. Source editing/deletion is not implemented.
 
-Inputs are plain euro strings, e.g. `12`, `12.3`, `12.34`, or `12,34`, with no
-thousands separator, exponent, or currency symbol. Whitespace around an amount is
-ignored. Precision beyond two decimal places is rejected, never rounded. Negative
-opening balances are allowed. Income/expense amounts are strictly positive inputs;
-the selected kind determines their sign in the ledger.
+A transaction may omit `source_id` or explicitly set it to null. Both mean no source;
+the UI calls this Manual. The default manual form uses no source, except when opened
+from an active source filter. Source metadata may be attached, replaced, or cleared
+while editing. All provided IDs must belong to the authenticated user. Source/entry writes reject
+unknown fields, including the retired `account_id`, rather than silently discarding
+provenance from an outdated client.
 
-SQLite stores signed 64-bit integer cents. Requests that exceed the supported
-range or cause an account balance to overflow are rejected atomically. Responses
-encode cents as decimal strings so browser display preserves precision.
+Euro inputs are strings such as `12`, `12.3`, `12.34`, or `12,34`, with no grouping,
+exponent, or currency symbol. Ignore surrounding whitespace; reject precision
+beyond two decimal places instead of rounding. Transaction inputs are strictly
+positive, with `income` or `expense` determining the stored sign. Stored amounts
+are i64 cents. Return cents as decimal strings and display them exactly with BigInt.
+Derived period totals outside the supported i64 range produce a validation error.
 
-## Entries and dates
+## Entries and reporting
 
-A transaction has an owned account, calendar date, description (1–200 trimmed
-characters), and nonzero signed cents. Dates use strict `YYYY-MM-DD`, years
-0001–9999, and must be on/after the selected account's opening date.
+An entry has an optional owned source, strict calendar date (`YYYY-MM-DD`, years 0001–9999),
+trimmed description (1–200 characters), and nonzero signed amount. Creation, editing
+(including changing or clearing source), and deletion update the ledger atomically. No date
+constraint depends on source creation. Future-dated entries are currently ordinary
+recorded transactions in their respective month; planned entries are deferred.
 
-Entry creation, editing (including changing the account), and deletion update
-balances and period totals. Dependent balance checks and the write commit together.
-Invalid requests leave the ledger unchanged. Identical legitimate purchases are
-allowed; no content-based automatic deduplication exists in this first slice.
-The UI disables repeated submissions while saving. Import matching/review is a
-separate planned feature, not a guarantee made by this manual-entry API.
+Identical legitimate purchases are allowed. The UI prevents repeated submission
+while saving; content-based matching/deduplication is a separate import feature.
 
-Future-dated manual entries are currently accepted and included in the all-dates
-recorded account balance and their selected month's totals. They are ordinary
-recorded entries, not planning objects. Dedicated planned entries come later.
+The main view filters by `YYYY-MM` and optionally one owned source. The API defaults
+an omitted month to the server's UTC month; the UI explicitly sends its selected
+month, initially the browser's local month. List newest dates first, then creation
+time and ID. The initial list is not paginated. Income sums positive amounts,
+spending is the positive magnitude of expenses, and net is income minus spending.
+No balance observation affects these totals. See the product's recorded-data semantics:
+a selected period does not imply complete bank history.
 
-## Views
+Dedicated transfer/refund types remain deferred. Ordinary income/expense entries
+keep their entered meaning; the app does not infer a transfer or linked refund.
 
-- Filter by explicit `YYYY-MM` and optionally one owned account. If the API caller
-  omits month, it defaults to the server's current UTC month. The UI always sends
-  its selected month, initially the browser's local month.
-- List transactions newest calendar date first, then creation time and ID for a
-  stable tie-break. The initial list is not paginated.
-- Income sums positive amounts; spending is the positive magnitude of expenses;
-  net is income minus spending. Summaries include the transaction count and month.
-- Account balances include all recorded dates, independently of the period filter.
-  Show each account's latest entry date (or opening date if empty); this does not
-  establish complete coverage. No import time exists until imports are implemented.
-- Transfers and linked refunds are not modeled yet. Do not record both sides of
-  an owned-account transfer as ordinary income/expense and expect correct spending
-  reports. Refund-specific treatment will be specified with that feature.
+## API
 
-## API boundary
-
-All routes below are under `/api`. JSON uses snake_case. Input euro fields are
-strings; output fields ending `_cents` are integer strings.
+All routes use `/api` and snake_case JSON. Input euro amounts are strings; output
+`*_cents` fields are decimal integer strings. CSRF-protected writes use the token
+from `/session`.
 
 | Method and route | Purpose |
 | --- | --- |
-| `GET /health` | Public process health response |
+| `GET /health` | Public process health |
 | `GET /session` | User or null, plus CSRF token |
 | `POST /login` | Username/password; returns user and rotated CSRF token |
 | `POST /logout` | Invalidate session |
-| `GET /accounts` | Owned accounts and all-dates recorded balances |
-| `POST /accounts` | `name`, `opening_date`, `opening_balance` |
-| `GET /transactions?month=…&account_id=…` | Filtered owned transactions |
-| `POST /transactions` | `account_id`, `date`, `description`, `amount`, `kind` |
-| `PUT /transactions/{id}` | Replace editable fields using the same request shape |
-| `DELETE /transactions/{id}` | Delete an owned transaction |
-| `GET /summary?month=…&account_id=…` | Income, spending, net, count, month |
+| `GET /sources` | Owned source names/IDs and latest entry date; no balance |
+| `POST /sources` | Create provenance metadata using `name` |
+| `GET /transactions?month=…&source_id=…` | Filtered owned entries |
+| `POST /transactions` | `source_id`, `date`, `description`, `amount`, `kind` |
+| `PUT /transactions/{id}` | Replace editable fields with the same request shape |
+| `DELETE /transactions/{id}` | Delete an owned entry |
+| `GET /summary?month=…&source_id=…` | Income, spending, net, count, month |
 
-`kind` is `income` or `expense`. Success statuses are 200 for reads/login, 201 for
-creation, and 204 for update/logout/delete. Application errors use
-`{"error":"message"}`: 401 for authentication, 403 for CSRF/origin, 404 for missing
-or inaccessible records, and 422 for domain validation. Framework rejection of
-malformed JSON or oversized bodies may use its own response. The frontend handles
-that with a generic error. API responses normally disable caching.
+Success is 200 for reads/login, 201 for source/entry creation, and 204 for
+update/logout/delete. Domain errors use `{"error":"message"}`: 401 authentication,
+403 CSRF/origin, 404 missing/inaccessible records, and 422 validation. Framework
+JSON/body-size rejections can have another shape, which the UI handles generically.
+
+## Preserved legacy data
+
+Migration `0003_optional_transaction_sources.sql` renames accounts to transaction
+sources and preserves IDs, owners, names, entry IDs, amounts, dates, descriptions,
+and creation times. It makes the source reference nullable. Prior migrations remain
+unchanged. Opening figures and snapshots remain stored as retired records, with no
+active API/UI or effect on reports. They are not repurposed into planning inputs.
+No personal database is inspected/migrated during development; migration tests
+use fresh synthetic databases. Deployment applies the migration on startup.
 
 ## Acceptance evidence
 
-| Example | Expected behavior | Test home |
-| --- | --- | --- |
-| Opening €1,000; income €2,000; expense €12.34 | Balance €2,987.66; spending €12.34; opening excluded from income | `backend/tests/ledger.rs` |
-| Change expense to €13.34, then delete it | Balances and summaries reflect each operation | `backend/tests/ledger.rs` |
-| 30 November versus 1 December | Only the November entry affects November totals | `backend/tests/ledger.rs` |
-| User B supplies User A's account/entry IDs | Empty owned lists or not found; no mutation/leak | `backend/tests/ledger.rs` |
-| Invalid precision/date, pre-opening entry, or overflow | Rejection with no partial mutation | `backend/tests/ledger.rs` |
-| Concurrent entries near maximum balance | At most the valid write commits | `backend/tests/ledger.rs` |
-| Session rotation, restart, logout, CSRF/origin | Identity persists or is rejected as appropriate | `backend/tests/ledger.rs` |
-| Very large cents and negative sub-euro values | Browser formatting/editing preserves cents | `frontend/tests/money.test.ts` |
-| Login → account → entries → edit → filter → logout | Complete desktop and phone journey | `frontend/e2e/ledger.spec.ts` |
+- Income €2,000 and expense €12.34 in November yield November spending €12.34
+  and net €1,987.66, without any opening figure. Older history is accepted.
+- Changing/deleting the expense updates totals; December entries stay out of
+  November. Source responses contain no inferred balance/opening fields.
+- Another user cannot access/mutate entries or sources through guessed IDs.
+- Invalid precision/date/sign requests leave records unchanged.
+- Manual entries appear in all-source totals despite having no source. Selecting
+  a source includes only its entries; attaching/clearing provenance changes only
+  that filter's membership, not the all-source totals.
+- Former Accounts/snapshot routes return 404; no balance CRUD is exposed.
 
-Unit/integration checks have passed during implementation; the browser suite is
-present but has not completed because its local server could not start in the
-restricted sandbox. Expiry is configured via the session library; the current
-integration tests cover rotation/persistence/logout, not simulated clock expiry.
-See the README for the current verification limits and runnable commands.
+`backend/tests/ledger.rs` covers these API and persistence cases along with session
+rotation, persistence, logout, and CSRF/origin. The expiry policy uses the session
+library and has not been tested with a simulated clock. `frontend/tests/money.test.ts`
+covers exact display/edit values; `frontend/e2e/ledger.spec.ts` defines the desktop
+and phone journeys. Browser verification remains limited by sandbox permissions;
+the owner previously confirmed login and manual entry locally before this refinement.

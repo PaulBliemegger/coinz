@@ -6,11 +6,13 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 
 | Spec | State | Scope |
 | --- | --- | --- |
-| [Manual ledger](manual-ledger.md) | Implemented; full verification pending | Identity, accounts, entry/edit/delete, filtering, amounts, dates, summaries |
+| [Manual ledger](manual-ledger.md) | Implemented; full verification pending | Identity, optional sources, entries, period totals, preserved legacy data |
+| [Planning](planning.md) | Proposed; not implemented | Monthly assumptions, commitments, one-off scenarios, optional later calculator |
 
-Imports, labels, budgets, and projections remain agreed product direction. Write
-their detailed specs immediately before implementation, using real questions and
-synthetic source samples. They are not implemented contracts yet.
+Imports, labels, and richer insights remain product direction. Write their detailed
+specs just before implementation using useful questions and wholly synthetic source
+samples. Account balances, reconciliation, and historical balance reconstruction
+are outside the core. Snapshot APIs/UI have been retired; legacy data remains stored.
 
 ## Keeping specs useful
 

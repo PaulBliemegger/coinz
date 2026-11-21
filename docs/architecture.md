@@ -30,7 +30,7 @@ backend/
     main.rs               CLI, configuration, server lifecycle
     lib.rs                Application/router assembly
     auth.rs               Identity, sessions, CSRF
-    ledger.rs             Accounts, entries, summaries and their SQL
+    ledger.rs             Optional sources, entries, summaries and their SQL
     domain.rs             Pure parsing/calculation rules
     db.rs                 SQLite setup and migrations
     error.rs              Shared safe API errors
@@ -54,6 +54,15 @@ Dockerfile / compose.yaml Deployment definition
 Makefile                  Named, repeatable development/check commands
 ```
 
+## Product boundary
+
+Transactions, period insights, and planning are the core. Optional import/source
+metadata supports provenance, duplicate matching, and future transfer recognition.
+No account bookkeeping or balance maintenance is required. Planning is not yet
+implemented; its future monthly scenarios can work without a starting bank balance.
+A balance-based What-if calculator is an optional later capability, not a runtime
+or schema dependency of expense tracking.
+
 ## How this grows
 
 Use a light hybrid: feature modules for application behavior and a small shared
@@ -67,7 +76,7 @@ own source adapters and normalization logic rather than being added to ledger
 handlers. Pure financial rules remain independently testable. Cross-feature
 operations should call explicit operations, not another feature's HTTP handler.
 
-On the frontend, routes compose feature components. Extract account/transaction
+On the frontend, routes compose feature components. Extract source/transaction
 forms and ledger panels when changing those independently. Once justified, keep
 related UI under `src/lib/features/ledger/` or `features/imports/`; shared UI
 primitives belong under `src/lib/components/` only when reused. Avoid empty
@@ -76,11 +85,16 @@ scaffolding directories, generic utility collections, and required layers.
 ## Guardrails
 
 - Ownership comes from the server session and is enforced in database operations,
-  including related account/entry IDs.
+  including related source/entry IDs.
 - Exact financial rules, dates, source provenance, and incomplete-history semantics
   follow the feature/product specs. Schema constraints and tests reinforce them.
-- Mutations and dependent balance checks are atomic. SQLite writes requiring the
-  current balance begin with `BEGIN IMMEDIATE` to serialize validation.
+- Ledger mutations are atomic and serialized with `BEGIN IMMEDIATE`. Transactions
+  own a user independently of the optional source. The source join is a left join
+  so manual entries remain in reports. Composite foreign keys enforce source
+  ownership when a source is supplied.
+- Source metadata is not a balance ledger. Migration 0003 preserves old account
+  identities as sources and retains retired balance tables without exposing an API.
+  The optional future calculator must not depend on legacy observations.
 - Password hashing uses Argon2id; `tower-sessions` and its SQLx SQLite store manage
   opaque sessions. No custom crypto or session-token implementation.
 - Migrations run on connection/startup. Expired session records are cleaned at app

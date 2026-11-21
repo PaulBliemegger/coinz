@@ -29,7 +29,7 @@ instructions cover Rust implementation choices.
   including related records; never accept an owner from the request body.
 - Use parameterized SQL. Multi-step financial mutations and their invariant checks
   belong in one transaction; serialize SQLite writes when validation depends on
-  the current balance. Roll back the whole operation on failure.
+  the current stored state. Roll back the whole operation on failure.
 - Add versioned migrations with schema changes. Before v1.0 a documented reset can
   be appropriate, but never reset a database implicitly during startup.
 - Return safe, actionable client errors. Log diagnostic causes without passwords,

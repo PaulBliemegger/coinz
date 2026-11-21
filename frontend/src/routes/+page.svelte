@@ -6,7 +6,7 @@
     ApiError,
     setCsrf,
     ledgerQuery,
-    type Account,
+    type Source,
     type Session,
     type Summary,
     type Transaction,
@@ -22,16 +22,16 @@
   let error = $state('');
   let formError = $state('');
   let notice = $state('');
-  let accounts = $state<Account[]>([]);
+  let sources = $state<Source[]>([]);
   let transactions = $state<Transaction[]>([]);
   let summary = $state<Summary | null>(null);
   let month = $state(localDate().slice(0, 7));
-  let accountFilter = $state('');
-  let accountDialog: HTMLDialogElement;
+  let sourceFilter = $state('');
+  let sourceDialog: HTMLDialogElement;
   let transactionDialog: HTMLDialogElement;
   let editing = $state<Transaction | null>(null);
   let deleting = $state(false);
-  let entryAccount = $state('');
+  let entrySource = $state('');
   let entryDate = $state(localDate());
   let entryKind = $state('expense');
   let entryAmount = $state('');
@@ -63,22 +63,22 @@
     const version = ++loadVersion;
     loading = true;
     error = '';
-    const query = ledgerQuery(month, accountFilter);
+    const query = ledgerQuery(month, sourceFilter);
     try {
-      const [nextAccounts, nextTransactions, nextSummary] = await Promise.all([
-        api<Account[]>('/accounts'),
+      const [nextSources, nextTransactions, nextSummary] = await Promise.all([
+        api<Source[]>('/sources'),
         api<Transaction[]>(`/transactions?${query}`),
         api<Summary>(`/summary?${query}`),
       ]);
       if (version !== loadVersion) return;
-      accounts = nextAccounts;
+      sources = nextSources;
       transactions = nextTransactions;
       summary = nextSummary;
     } catch (cause) {
       if (version !== loadVersion) return;
       if (cause instanceof ApiError && cause.status === 401) {
         user = null;
-        accounts = [];
+        sources = [];
         transactions = [];
         summary = null;
       }
@@ -103,7 +103,7 @@
       });
       setCsrf(session.csrf_token);
       user = session.user;
-      accountFilter = '';
+      sourceFilter = '';
       await loadData();
     } catch (cause) {
       error = message(cause);
@@ -118,7 +118,7 @@
       await api('/logout', 'POST');
       ++loadVersion;
       user = null;
-      accounts = [];
+      sources = [];
       transactions = [];
       summary = null;
       notice = '';
@@ -130,22 +130,23 @@
     }
   }
 
-  function openAccount() {
+  function openSource() {
     formError = '';
-    accountDialog.showModal();
+    sourceDialog.showModal();
   }
 
-  async function saveAccount(event: SubmitEvent) {
+  async function saveSource(event: SubmitEvent) {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
     const values = new FormData(form);
     busy = true;
     formError = '';
     try {
-      await api('/accounts', 'POST', Object.fromEntries(values));
-      accountDialog.close();
+      const created = await api<{ id: string }>('/sources', 'POST', Object.fromEntries(values));
+      entrySource = created.id;
+      sourceDialog.close();
       form.reset();
-      notice = 'Account added. A place for your coinz to call home.';
+      notice = 'Source added.';
       await loadData();
     } catch (cause) {
       formError = message(cause);
@@ -156,7 +157,7 @@
 
   async function openEntry(transaction: Transaction | null = null) {
     editing = transaction;
-    entryAccount = transaction?.account_id ?? (accountFilter || accounts[0]?.id || '');
+    entrySource = transaction ? (transaction.source_id ?? '') : sourceFilter;
     entryDate = transaction?.date ?? localDate();
     entryKind = transaction && BigInt(transaction.amount_cents) > 0n ? 'income' : 'expense';
     entryAmount = transaction ? amountInput(transaction.amount_cents) : '';
@@ -176,7 +177,7 @@
         editing ? `/transactions/${editing.id}` : '/transactions',
         editing ? 'PUT' : 'POST',
         {
-          account_id: entryAccount,
+          source_id: entrySource || null,
           date: entryDate,
           kind: entryKind,
           amount: entryAmount,
@@ -190,7 +191,7 @@
         month = entryMonth;
         notice += ` Showing ${monthLabel(month)}.`;
       }
-      if (accountFilter && accountFilter !== entryAccount) accountFilter = entryAccount;
+      if (sourceFilter && sourceFilter !== entrySource) sourceFilter = entrySource;
       await loadData();
     } catch (cause) {
       formError = message(cause);
@@ -288,11 +289,7 @@
           <h1>Where did it go?</h1>
           <p class="muted">A closer look at the entries you've recorded.</p>
         </div>
-        <button
-          class="button primary"
-          onclick={() => openEntry()}
-          disabled={accounts.length === 0 || busy}
-        >
+        <button class="button primary" onclick={() => openEntry()} disabled={busy}>
           + Add transaction
         </button>
       </div>
@@ -313,11 +310,11 @@
           />
         </label>
         <label>
-          Account<select bind:value={accountFilter} onchange={changeFilter}>
-            <option value="">All accounts</option>{#each accounts as account (account.id)}<option
-                value={account.id}
+          Source<select bind:value={sourceFilter} onchange={changeFilter}>
+            <option value="">All sources</option>{#each sources as source (source.id)}<option
+                value={source.id}
               >
-                {account.name}
+                {source.name}
               </option>{/each}
           </select>
         </label>
@@ -336,7 +333,7 @@
           <div class="secondary-total">
             <p>Recorded income</p>
             <strong data-testid="income">{money(summary.income_cents)}</strong><span class="muted">
-              Same period and account selection
+              Same period and filters
             </span>
           </div>
           <div class="secondary-total">
@@ -351,7 +348,7 @@
         These figures reflect your records, not a live bank connection. Missing entries can change
         the picture.
       </p>
-      <div class="workspace">
+      <div class="ledger-workspace">
         <section class="ledger" aria-labelledby="ledger-heading">
           <div class="section-heading">
             <h2 id="ledger-heading">The entries</h2>
@@ -362,15 +359,6 @@
               <p>The entries couldn't be loaded.</p>
               <p class="muted">Use Retry above to get the latest recorded figures.</p>
             </div>
-          {:else if accounts.length === 0}<div class="empty-state">
-              <span class="empty-mark" aria-hidden="true">c.</span>
-              <h3>Let's give your coinz a home.</h3>
-              <p>
-                Add an account and its opening balance.<br />Then you can start recording
-                transactions.
-              </p>
-              <button class="button" onclick={openAccount}>Add your first account</button>
-            </div>
           {:else if transactions.length === 0}<div class="empty-state">
               <h3>Nothing recorded for this period.</h3>
               <p>Your money is maintaining a low profile.</p>
@@ -379,12 +367,12 @@
           {:else}
             <table>
               <caption class="sr-only">
-                Recorded transactions for {monthLabel(month)}{accountFilter
-                  ? ' in the selected account'
-                  : ' across all accounts'}
+                Recorded transactions for {monthLabel(month)}{sourceFilter
+                  ? ' in the selected source'
+                  : ' across all sources'}
               </caption><thead>
                 <tr>
-                  <th>Date</th><th>Description</th><th>Account</th><th class="number">
+                  <th>Date</th><th>Description</th><th>Source</th><th class="number">
                     Amount
                   </th><th><span class="sr-only">Actions</span></th>
                 </tr>
@@ -394,7 +382,7 @@
                       class="entry-description"
                     >
                       {transaction.description}
-                    </td><td class="entry-account">{transaction.account_name}</td><td
+                    </td><td class="entry-source">{transaction.source_name ?? 'Manual'}</td><td
                       class:income={BigInt(transaction.amount_cents) > 0n}
                       class="number entry-amount"
                     >
@@ -413,33 +401,6 @@
             </table>
           {/if}
         </section>
-        <aside class="accounts-panel" aria-labelledby="accounts-heading">
-          <div class="section-heading">
-            <h2 id="accounts-heading">Your accounts</h2>
-            <button class="button quiet" onclick={openAccount}>+ Add</button>
-          </div>
-          <p class="muted account-explainer">Recorded balances · all dates</p>
-          {#each accounts as account (account.id)}
-            <section class="account-item" aria-label={`${account.name} account`}>
-              <div class="account-row">
-                <h3>{account.name}</h3>
-                <span class="account-monogram" aria-hidden="true">
-                  {account.name.slice(0, 1).toUpperCase()}
-                </span>
-              </div>
-              <p class="account-balance">{money(account.balance_cents)}</p>
-              <p class="account-date">
-                {account.latest_transaction_date
-                  ? `Latest entry: ${dateLabel(account.latest_transaction_date)}`
-                  : `Opening: ${dateLabel(account.opening_date)}`}
-              </p>
-              <p class="account-caveat">Complete history isn't verified.</p>
-            </section>
-          {:else}<p class="muted no-accounts">No accounts yet.</p>{/each}
-          <p class="aside-footnote">
-            Opening balances set the starting point. They don't count as income.
-          </p>
-        </aside>
       </div>
       <footer>coinz · Small steps. Fewer financial mysteries.</footer>
     </main>
@@ -447,55 +408,32 @@
 {/if}
 
 <dialog
-  bind:this={accountDialog}
+  bind:this={sourceDialog}
   oncancel={(event) => {
     if (busy) event.preventDefault();
   }}
-  aria-labelledby="account-title"
+  aria-labelledby="source-title"
 >
-  <form onsubmit={saveAccount}>
+  <form onsubmit={saveSource}>
     <div class="dialog-heading">
       <div>
-        <p class="eyebrow">A STARTING POINT</p>
-        <h2 id="account-title">Add an account</h2>
+        <p class="eyebrow">WHERE IT CAME FROM</p>
+        <h2 id="source-title">Add a source</h2>
       </div>
       <button
         type="button"
         class="button quiet"
-        onclick={() => accountDialog.close()}
+        onclick={() => sourceDialog.close()}
         disabled={busy}
-        aria-label="Close add account"
+        aria-label="Close add source"
       >
         Close
       </button>
     </div>
-    <label>Account name<input name="name" placeholder="e.g. N26" required maxlength="80" /></label>
-    <label>
-      Opening date<input
-        name="opening_date"
-        type="date"
-        value={localDate()}
-        min="0001-01-01"
-        max="9999-12-31"
-        required
-      />
-    </label>
-    <label>
-      Opening balance (€)<input
-        name="opening_balance"
-        inputmode="decimal"
-        value="0.00"
-        required
-        aria-describedby="opening-help"
-      />
-    </label>
-    <p class="form-help" id="opening-help">
-      The balance at the start of this date, before any transactions you'll enter for it. Negative
-      balances are allowed.
-    </p>
+    <label>Source name<input name="name" placeholder="e.g. N26" required maxlength="80" /></label>
     {#if formError}<p class="error" role="alert">{formError}</p>{/if}
     <button class="button primary full" disabled={busy}>
-      {busy ? 'Saving…' : 'Create account'}
+      {busy ? 'Saving…' : 'Create source'}
     </button>
   </form>
 </dialog>
@@ -543,21 +481,23 @@
     </label>
     <div class="form-row">
       <label>
-        Date<input
-          type="date"
-          bind:value={entryDate}
-          min={accounts.find((account) => account.id === entryAccount)?.opening_date ??
-            '0001-01-01'}
-          max="9999-12-31"
-          required
-        />
+        Date<input type="date" bind:value={entryDate} min="0001-01-01" max="9999-12-31" required />
       </label><label>
-        Account<select bind:value={entryAccount} required>
-          {#each accounts as account (account.id)}<option value={account.id}>
-              {account.name}
+        Source (optional)<select bind:value={entrySource}>
+          <option value="">Manual · no source</option>
+          {#each sources as source (source.id)}<option value={source.id}>
+              {source.name}
             </option>{/each}
         </select>
       </label>
+    </div>
+    <div class="source-help">
+      <p class="form-help">
+        A source records where an entry came from, such as N26 or Erste. You can leave it blank.
+      </p>
+      <button type="button" class="button quiet" onclick={openSource} disabled={busy}>
+        + Add source
+      </button>
     </div>
     {#if formError}<p class="error" role="alert">{formError}</p>{/if}
     <button class="button primary full" disabled={busy || deleting}>

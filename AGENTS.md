@@ -15,6 +15,17 @@ Read `docs/specs/README.md` and the relevant feature spec. Scoped backend/fronte
   data. Prefer simple flows and make financial assumptions visible.
 - Do not create commits, remotes, or a branch workflow without user instruction.
 
+## Private data boundary
+
+- Never read personal databases, bank exports, backups, private runtime logs, or
+  screenshots/traces of real finances. Never query the real app or attach to its
+  container, data volume, or authenticated browser session.
+- Work only with source/docs and wholly synthetic test fixtures in temporary
+  databases. Scope searches explicitly; do not scan private data directories.
+- Do not use Docker daemon access, escalated commands, or another tool surface
+  to get around data isolation. See `docs/privacy.md`; these instructions are
+  additional workflow rules, not a substitute for OS/VM enforcement.
+
 ## Architecture and conventions
 
 - Prefer specifically named feature modules and small shared infrastructure.
@@ -28,7 +39,7 @@ Read `docs/specs/README.md` and the relevant feature spec. Scoped backend/fronte
 
 - Rust + Axum backend; Svelte + TypeScript through SvelteKit's static adapter;
   SQLite through SQLx. One deployed app container serves both API and frontend.
-- Keep domain calculations and import matching separate from HTTP handlers and UI.
+- Keep period calculations and import matching separate from HTTP handlers and UI.
   Use ordinary modules and concrete types. Add abstractions for a demonstrated
   need, not for a hypothetical future integration.
 - Store EUR money as signed integer cents; never use floating point for financial
