@@ -18,6 +18,8 @@ export interface Transaction {
   date: string;
   description: string;
   amount_cents: string;
+  origin: 'manual' | 'csv' | 'unknown';
+  csv_linked: boolean;
 }
 export interface Summary {
   month: string;
@@ -25,6 +27,35 @@ export interface Summary {
   spending_cents: string;
   net_cents: string;
   transaction_count: number;
+}
+
+export interface ImportRow {
+  record: number;
+  date: string;
+  description: string;
+  amount_cents: string;
+  external_id: string;
+  error: string | null;
+  status: 'new' | 'known' | 'review' | 'conflict' | 'invalid';
+  candidates: { id: string; date: string; description: string; amount_cents: string }[];
+}
+export interface ImportOutcome {
+  added: number;
+  matched: number;
+  skipped: number;
+  known: number;
+  latest_month: string | null;
+  excluded: number;
+  income_cents: string;
+  spending_cents: string;
+}
+
+export interface Provenance {
+  source_name: string;
+  record_number: number;
+  date: string;
+  description: string;
+  amount_cents: string;
 }
 
 let csrf = '';

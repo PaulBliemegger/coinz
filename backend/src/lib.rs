@@ -2,6 +2,7 @@ pub mod auth;
 pub mod db;
 pub mod domain;
 pub mod error;
+pub mod imports;
 pub mod ledger;
 
 use axum::{
@@ -69,13 +70,23 @@ pub async fn app(
         )
         .route(
             "/transactions/{id}",
-            axum::routing::put(ledger::update_transaction).delete(ledger::delete_transaction),
+            axum::routing::put(ledger::update_transaction)
+                .patch(ledger::change_field)
+                .delete(ledger::delete_transaction),
         )
+        .route("/transactions/bulk-delete", post(ledger::bulk_delete))
+        .route("/transactions/{id}/provenance", get(ledger::provenance))
         .route("/summary", get(ledger::summary))
         .fallback(|| async { crate::error::AppError::not_found() })
+        .layer(RequestBodyLimitLayer::new(16 * 1024))
+        .merge(
+            Router::new()
+                .route("/imports/preview", post(imports::preview))
+                .route("/imports/commit", post(imports::commit))
+                .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024)),
+        )
         .layer(middleware::from_fn_with_state(state.clone(), auth::csrf))
-        .layer(middleware::from_fn(no_cache))
-        .layer(RequestBodyLimitLayer::new(16 * 1024));
+        .layer(middleware::from_fn(no_cache));
     let index = config.static_dir.join("index.html");
     Ok(Router::new()
         .nest("/api", api)
