@@ -1,4 +1,7 @@
 <script lang="ts">
+  import SelectionHighlight from '#lib/components/selection/SelectionHighlight.svelte';
+  import RoundSelection from '#lib/components/selection/RoundSelection.svelte';
+  import { rowSelection } from '#lib/components/selection/row-selection.ts';
   import type { ImportRow } from '#lib/api.ts';
   import { money } from '#lib/money.ts';
   let {
@@ -16,22 +19,29 @@
     onselect: (checked: boolean) => void;
     onchoice: (choice: string) => void;
   } = $props();
+  const selectable = $derived(
+    row.status === 'new' || (row.status === 'review' && choice === 'keep'),
+  );
 </script>
 
 <article
   class="review-row"
+  class:selected
+  class:selectable={selectable && !busy}
+  use:rowSelection={{ selected, disabled: busy || !selectable, onselect }}
   class:attention={row.status === 'invalid' ||
     row.status === 'conflict' ||
     (row.status === 'review' && !choice)}
 >
+  <SelectionHighlight {selected} />
   <div class="row-main">
-    <input
-      type="checkbox"
-      aria-label={`Include ${row.description || 'invalid row'}`}
-      checked={selected}
-      disabled={busy || !(row.status === 'new' || (row.status === 'review' && choice === 'keep'))}
-      onchange={(event) => onselect(event.currentTarget.checked)}
+    <RoundSelection
+      label={`Include ${row.description || 'invalid row'}`}
+      {selected}
+      disabled={busy || !selectable}
+      {onselect}
     />
+
     <div>
       <h4>{row.description || 'Missing description'}</h4>
       <p class="muted">{row.date}</p>
@@ -78,9 +88,19 @@
 
 <style>
   .review-row {
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--line);
+    position: relative;
+    isolation: isolate;
+    padding: 0.75rem;
+    border-radius: 0.7rem;
+    margin-bottom: 0.5rem;
     overflow-wrap: anywhere;
+  }
+  .review-row.selectable {
+    cursor: pointer;
+  }
+  .review-row > :global(:not(.selection-highlight)) {
+    position: relative;
+    z-index: 1;
   }
   .attention {
     background: var(--review-fill);
@@ -91,15 +111,9 @@
   }
   .row-main {
     display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
     gap: 0.75rem;
     align-items: start;
-  }
-  input[type='checkbox'] {
-    width: 19px;
-    min-height: 19px;
-    margin-top: 0.4rem;
-    accent-color: var(--accent);
   }
   h4 {
     margin: 0;

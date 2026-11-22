@@ -116,6 +116,7 @@
       const result = await api<ImportOutcome>('/imports/commit', 'POST', {
         source_id: sourceId,
         csv,
+        filename: file?.name,
         selected_records: selection.records,
         decisions: selection.decisions,
       });

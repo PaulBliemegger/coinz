@@ -4,6 +4,7 @@ pub mod domain;
 pub mod error;
 pub mod imports;
 pub mod ledger;
+pub mod reports;
 
 use axum::{
     Router,
@@ -77,8 +78,20 @@ pub async fn app(
         .route("/transactions/bulk-delete", post(ledger::bulk_delete))
         .route("/transactions/{id}/provenance", get(ledger::provenance))
         .route("/summary", get(ledger::summary))
+        .route("/entries", get(reports::entries))
+        .route("/dashboard", get(reports::dashboard))
+        .route("/imports/history", get(imports::history::list))
+        .route("/imports/history/{id}", get(imports::history::detail))
         .fallback(|| async { crate::error::AppError::not_found() })
         .layer(RequestBodyLimitLayer::new(16 * 1024))
+        .merge(
+            Router::new()
+                .route(
+                    "/imports/history/{id}/remove",
+                    post(imports::history::remove),
+                )
+                .layer(RequestBodyLimitLayer::new(64 * 1024)),
+        )
         .merge(
             Router::new()
                 .route("/imports/preview", post(imports::preview))

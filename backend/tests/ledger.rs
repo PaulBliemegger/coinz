@@ -1414,3 +1414,543 @@ async fn deleting_all_imported_entries_allows_full_reimport_and_migration_clears
         16
     );
 }
+
+#[tokio::test]
+async fn workspace_pagination_totals_dates_search_and_dashboard_are_owned() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let source = alice.source("Report fixture").await;
+    import_ok(&mut alice, &source, DEMO_CSV, json!([])).await;
+    bob.entry(None, "2026-11-01", "9999", "expense").await;
+    let (status, first) = alice.call("GET", "/api/entries?page_size=5", None).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["entries"].as_array().unwrap().len(), 5);
+    assert_eq!(first["pages"], 4);
+    assert_eq!(first["totals"]["transaction_count"], 16);
+    assert_eq!(first["totals"]["spending_cents"], "202403");
+    let second = alice
+        .call("GET", "/api/entries?page_size=5&page=2", None)
+        .await
+        .1;
+    assert!(second["entries"].as_array().unwrap().iter().all(|r| {
+        !first["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["id"] == r["id"])
+    }));
+    let november = alice
+        .call("GET", "/api/entries?start=2026-11-01&end=2026-11-30", None)
+        .await
+        .1;
+    assert_eq!(november["totals"]["spending_cents"], "106379");
+    let day = alice
+        .call("GET", "/api/entries?start=2026-11-01&end=2026-11-01", None)
+        .await
+        .1;
+    assert_eq!(day["totals"]["transaction_count"], 1);
+    assert!(
+        day["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["date"] == "2026-11-01")
+    );
+    let coffee = alice.call("GET", "/api/entries?q=COFFEE", None).await.1;
+    assert!(coffee["totals"]["transaction_count"].as_u64().unwrap() > 0);
+    assert!(coffee["entries"].as_array().unwrap().iter().all(|r| {
+        r["description"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("coffee")
+    }));
+    let dashboard = alice
+        .call("GET", "/api/dashboard?month=2026-11", None)
+        .await
+        .1;
+    assert_eq!(dashboard["monthly"]["spending_cents"], "106379");
+    assert_eq!(dashboard["yearly"]["spending_cents"], "202403");
+    assert_eq!(dashboard["months"].as_array().unwrap().len(), 12);
+    assert_eq!(dashboard["latest"].as_array().unwrap().len(), 5);
+    assert_eq!(
+        bob.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        1
+    );
+    for path in [
+        "/api/entries?start=2026-02-30",
+        "/api/entries?start=2026-12-01&end=2026-01-01",
+        "/api/entries?page=0",
+        "/api/entries?page_size=101",
+        "/api/dashboard?month=2026-13",
+    ] {
+        assert_eq!(
+            alice.call("GET", path, None).await.0,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        alice
+            .call("GET", "/api/dashboard?month=9999-12", None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn import_history_removal_preserves_edits_matches_and_rechecks_overlaps() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let source = alice.source("Batch fixture").await;
+    let manual = alice.entry(None, "2026-11-01", "3.50", "expense").await;
+    let csv = "date,description,amount,external_id\n2026-11-01,Synthetic entry,-3.50,manual\n2026-10-01,Unchanged,-1,one\n2026-11-02,Edited,-2,two\n2026-11-03,Shared,-3,three\n2026-11-04,Deleted,-4,four\n";
+    let input = json!({"source_id":source,"csv":csv,"filename":"/fake/path/batch.csv","decisions":[{"record":2,"action":"match","transaction_id":manual}]});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let list = alice.call("GET", "/api/imports/history", None).await.1;
+    let batch = &list["batches"][0];
+    assert_eq!(batch["filename"], "batch.csv");
+    assert_eq!(batch["added"], 4);
+    assert_eq!(batch["matched"], 1);
+    let id = batch["id"].as_str().unwrap();
+    let path = format!("/api/imports/history/{id}");
+    let removal = format!("{path}/remove");
+    assert_eq!(bob.call("GET", &path, None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        bob.call("GET", "/api/imports/history", None).await.1["batches"],
+        json!([])
+    );
+    assert_eq!(
+        bob.call("POST", &removal, Some(json!({"token":"no"})))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let original = alice.call("GET", &path, None).await.1;
+    assert_eq!(original["removable"], 4);
+    let ids:Vec<(String,String)>=sqlx::query_as("SELECT id,description FROM transactions WHERE user_id=(SELECT id FROM users WHERE username='alice')").fetch_all(&h.pool).await.unwrap();
+    let edited = &ids.iter().find(|(_, desc)| desc == "Edited").unwrap().0;
+    let deleted = &ids.iter().find(|(_, desc)| desc == "Deleted").unwrap().0;
+    alice
+        .call(
+            "PATCH",
+            &format!("/api/transactions/{edited}"),
+            Some(json!({"field":"description","value":"User revision"})),
+        )
+        .await;
+    alice
+        .call("DELETE", &format!("/api/transactions/{deleted}"), None)
+        .await;
+    let overlap = "date,description,amount,external_id\n2026-11-03,Shared,-3,three\n";
+    import_ok(&mut alice, &source, overlap, json!([])).await;
+    assert_eq!(
+        alice
+            .call("POST", &removal, Some(json!({"token":original["token"]})))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let current = alice.call("GET", &path, None).await.1;
+    assert_eq!(current["removable_entries"].as_array().unwrap().len(), 2);
+    assert_eq!(current["edited_entries"][0]["description"], "User revision");
+    assert_eq!(current["edited_entries"][0]["id"], *edited);
+    assert!(
+        current["removable_entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["description"] == "Shared" && entry["overlapping"] == true)
+    );
+    assert_eq!(current["removable"], 2);
+    assert_eq!(current["edited"], 1);
+    assert_eq!(current["overlapping"], 1);
+    assert_eq!(current["already_deleted"], 1);
+    assert_eq!(
+        alice
+            .send(
+                "POST",
+                &removal,
+                Some(json!({"token":current["token"]})),
+                false,
+                ORIGIN
+            )
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let result = alice
+        .call("POST", &removal, Some(json!({"token":current["token"]})))
+        .await;
+    assert_eq!(result.0, StatusCode::OK, "{}", result.1);
+    assert_eq!(result.1["removed"], 2);
+    let current = alice.call("GET", &path, None).await.1;
+    assert_eq!(current["removable"], 0);
+    assert_eq!(current["batch"]["removed"], 2);
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &removal,
+                Some(json!({"token":current["token"],"selected_edited_ids":[edited]}))
+            )
+            .await
+            .1["removed"],
+        1
+    );
+    let remaining = alice.call("GET", "/api/entries", None).await.1;
+    assert_eq!(remaining["totals"]["transaction_count"], 1);
+    assert!(
+        remaining["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == manual)
+    );
+    let preview = alice
+        .call(
+            "POST",
+            "/api/imports/preview",
+            Some(import_input(&source, csv, json!([]))),
+        )
+        .await
+        .1;
+    assert_eq!(preview["rows"][1]["status"], "new");
+    assert_eq!(preview["rows"][2]["status"], "new");
+    assert_eq!(preview["rows"][3]["status"], "new");
+}
+
+#[tokio::test]
+async fn history_records_are_atomic_and_idless_repeats_preserve_creator_and_edits() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let source = alice.source("History regression").await;
+    let csv = "date,description,amount,external_id\n2026-11-01,ID-less purchase,-1.25,\n";
+    import_ok(&mut alice, &source, csv, json!([])).await;
+    let batch = alice.call("GET", "/api/imports/history", None).await.1["batches"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let id = alice.call("GET", "/api/entries", None).await.1["entries"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let path = format!("/api/imports/history/{batch}");
+    let token = alice.call("GET", &path, None).await.1["token"].clone();
+    // Identical saves are not edits; changing and reverting still is an edit.
+    alice
+        .call(
+            "PATCH",
+            &format!("/api/transactions/{id}"),
+            Some(json!({"field":"description","value":"ID-less purchase"})),
+        )
+        .await;
+    assert_eq!(alice.call("GET", &path, None).await.1["token"], token);
+    for description in ["Changed", "ID-less purchase"] {
+        alice
+            .call(
+                "PATCH",
+                &format!("/api/transactions/{id}"),
+                Some(json!({"field":"description","value":description})),
+            )
+            .await;
+    }
+    assert_eq!(alice.call("GET", &path, None).await.1["edited"], 1);
+    import_ok(&mut alice, &source, csv, json!([])).await;
+    let review = alice.call("GET", &path, None).await.1;
+    assert_eq!(review["overlapping"], 1);
+    assert_eq!(review["edited"], 1);
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("{path}/remove"),
+                Some(json!({"token":review["token"]}))
+            )
+            .await
+            .1["removed"],
+        0
+    );
+    let invalid = "date,description,amount,external_id\n2026-11-02,Valid before failure,-2,ok\n2026-02-30,Invalid,-3,bad\n";
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/imports/commit",
+                Some(import_input(&source, invalid, json!([])))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice.call("GET", "/api/imports/history", None).await.1["batches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        1
+    );
+    let reviewed = alice.call("GET", &path, None).await.1;
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("{path}/remove"),
+                Some(json!({"token":reviewed["token"],"selected_edited_ids":[id]}))
+            )
+            .await
+            .1["removed"],
+        1
+    );
+}
+
+#[tokio::test]
+async fn import_removal_only_includes_individually_selected_edited_entries() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let source = alice.source("Individual edit fixture").await;
+    let csv = "date,description,amount,external_id\n2026-11-01,First edited,-1,one\n2026-11-02,Second edited,-2,two\n2026-11-03,Third edited,-3,three\n2026-11-04,Unchanged,-4,four\n2026-11-05,Shared,-5,five\n";
+    import_ok(&mut alice, &source, csv, json!([])).await;
+    let batch = alice.call("GET", "/api/imports/history", None).await.1["batches"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let path = format!("/api/imports/history/{batch}");
+    let removal = format!("{path}/remove");
+    let rows = alice.call("GET", "/api/entries", None).await.1;
+    let id_for = |description: &str| {
+        rows["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["description"] == description)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let first = id_for("First edited");
+    let second = id_for("Second edited");
+    let third = id_for("Third edited");
+    let unchanged = id_for("Unchanged");
+    let shared = id_for("Shared");
+    for id in [&first, &second, &third] {
+        assert_eq!(
+            alice
+                .call(
+                    "PATCH",
+                    &format!("/api/transactions/{id}"),
+                    Some(json!({"field":"amount","value":"9.99","kind":"expense"}))
+                )
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    import_ok(
+        &mut alice,
+        &source,
+        "date,description,amount,external_id\n2026-11-05,Shared,-5,five\n",
+        json!([]),
+    )
+    .await;
+    let foreign = bob.entry(None, "2026-11-01", "1", "expense").await;
+    let manual = alice.entry(None, "2026-11-01", "1", "expense").await;
+    let review = alice.call("GET", &path, None).await.1;
+    assert_eq!(review["edited_entries"].as_array().unwrap().len(), 3);
+    assert_eq!(review["edited_entries"][0]["id"], third);
+    assert_eq!(review["edited_entries"][0]["amount_cents"], "-999");
+    assert!(
+        review["removable_entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["id"] == shared && entry["overlapping"] == true)
+    );
+    for ids in [
+        json!([first, foreign]),
+        json!([first, manual]),
+        json!([first, shared]),
+        json!([first, unchanged]),
+        json!([first, first]),
+        json!(["missing"]),
+    ] {
+        assert_eq!(
+            alice
+                .call(
+                    "POST",
+                    &removal,
+                    Some(json!({"token":review["token"],"selected_edited_ids":ids}))
+                )
+                .await
+                .0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            alice.call("GET", &path, None).await.1["removable"],
+            2,
+            "invalid selection must not delete unchanged entries"
+        );
+    }
+    let large_selection: Vec<_> = (0..1000)
+        .map(|n| format!("00000000-0000-0000-0000-{n:012}"))
+        .collect();
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &removal,
+                Some(json!({"token":review["token"],"selected_edited_ids":large_selection}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "valid-sized batches reach selection validation, rather than a 16 KiB body rejection"
+    );
+    let result = alice
+        .call(
+            "POST",
+            &removal,
+            Some(json!({"token":review["token"],"selected_edited_ids":[first,third]})),
+        )
+        .await;
+    assert_eq!(result.0, StatusCode::OK, "{}", result.1);
+    assert_eq!(result.1["removed"], 4);
+    let review = alice.call("GET", &path, None).await.1;
+    assert_eq!(review["removable_entries"], json!([]));
+    assert_eq!(review["edited_entries"].as_array().unwrap().len(), 1);
+    assert_eq!(review["edited_entries"][0]["id"], second);
+    assert_eq!(review["overlapping"], 0);
+    assert_eq!(review["already_deleted"], 4);
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        2
+    );
+}
+
+#[tokio::test]
+async fn dense_overlaps_keep_one_creator_and_do_not_block_batch_removal() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let source = alice.source("Dense overlapping synthetic exports").await;
+    let csv = |ids: &[u32]| {
+        format!(
+            "date,description,amount,external_id\n{}",
+            ids.iter()
+                .map(|id| format!("2026-11-01,Purchase {id},-1,id-{id}\n"))
+                .collect::<String>()
+        )
+    };
+    let first = csv(&[1, 2, 3]);
+    import_ok(&mut alice, &source, &first, json!([])).await;
+    let creator: String = sqlx::query_scalar("SELECT id FROM import_batches WHERE source_id=?")
+        .bind(&source)
+        .fetch_one(&h.pool)
+        .await
+        .unwrap();
+    import_ok(&mut alice, &source, &csv(&[2, 3, 4]), json!([])).await;
+    let later: String =
+        sqlx::query_scalar("SELECT id FROM import_batches WHERE source_id=? AND added=1")
+            .bind(&source)
+            .fetch_one(&h.pool)
+            .await
+            .unwrap();
+    for ids in [&[4, 3, 2, 1][..], &[2, 1, 4, 3][..]] {
+        import_ok(&mut alice, &source, &csv(ids), json!([])).await;
+    }
+    let path = format!("/api/imports/history/{creator}");
+    let review = alice.call("GET", &path, None).await.1;
+    assert_eq!(review["removable"], 3);
+    assert_eq!(review["overlapping"], 3);
+    assert!(
+        review["removable_entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry["overlapping"] == true)
+    );
+    // A later import owns only its new addition, not the overlapping original entries.
+    let later_review = alice
+        .call("GET", &format!("/api/imports/history/{later}"), None)
+        .await
+        .1;
+    assert_eq!(later_review["removable"], 1);
+    assert_eq!(
+        later_review["removable_entries"][0]["description"],
+        "Purchase 4"
+    );
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("{path}/remove"),
+                Some(json!({"token":review["token"]}))
+            )
+            .await
+            .1["removed"],
+        3
+    );
+    let remaining = alice.call("GET", "/api/entries", None).await.1;
+    assert_eq!(remaining["totals"]["transaction_count"], 1);
+    assert_eq!(remaining["entries"][0]["description"], "Purchase 4");
+    let later_review = alice
+        .call("GET", &format!("/api/imports/history/{later}"), None)
+        .await
+        .1;
+    assert_eq!(later_review["removable"], 1);
+    let preview = alice
+        .call(
+            "POST",
+            "/api/imports/preview",
+            Some(import_input(&source, &first, json!([]))),
+        )
+        .await
+        .1;
+    assert!(
+        preview["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["status"] == "new")
+    );
+    assert_eq!(
+        import_ok(&mut alice, &source, &first, json!([])).await["added"],
+        3
+    );
+    assert_eq!(
+        alice.call("GET", &path, None).await.1["removable"],
+        0,
+        "reimport creates new entries owned by the new import"
+    );
+    let later_path = format!("/api/imports/history/{later}");
+    let later_review = alice.call("GET", &later_path, None).await.1;
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("{later_path}/remove"),
+                Some(json!({"token":later_review["token"]}))
+            )
+            .await
+            .1["removed"],
+        1
+    );
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        3,
+        "removing the later import must not delete newly reimported entries"
+    );
+}

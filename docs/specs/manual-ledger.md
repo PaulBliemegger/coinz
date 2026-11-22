@@ -1,6 +1,7 @@
 # Manual ledger
 
-Status: implemented; browser verification remains pending.
+Status: implemented; current verification limits are in the
+[README](../../README.md#verification-status).
 Manual tracking is independent of accounts and balances. Sources are optional metadata.
 Purpose: record personal EUR finances accurately while making incomplete history
 visible. [Product scope](../product.md) owns the general recorded-figure semantics.
@@ -13,7 +14,8 @@ are normalized to lowercase ASCII letters/numbers plus dot, underscore, or hyphe
 
 Sessions are stored in SQLite and use an opaque HttpOnly, SameSite=Strict cookie,
 with seven-day inactivity expiry. Login rotates the session ID and CSRF token;
-logout invalidates the session. Failed login uses a generic credential error.
+logout invalidates the session. Unauthorized feature reads return the interface to
+login, including after logout in another tab; logging in refreshes the CSRF token. Failed login uses a generic credential error.
 HTTPS deployments enable the Secure cookie flag.
 
 Private reads and writes require a valid user. Source or transaction IDs owned
@@ -30,8 +32,7 @@ stream. Creating a source requires no balance. Source names are not unique and a
 not identity keys for deduplication. Source editing/deletion is not implemented.
 
 A transaction may omit `source_id` or explicitly set it to null. Both mean no source;
-the UI calls the source No source. Entry method is shown separately. The default manual form uses no source, except when opened
-from an active source filter. Source metadata may be attached, replaced, or cleared
+the UI calls the source No source. Entry method is shown separately. The default manual form uses no source. Source metadata may be attached, replaced, or cleared
 while editing. All provided IDs must belong to the authenticated user. Source/entry writes reject
 unknown fields, including the retired `account_id`, rather than silently discarding
 provenance from an outdated client.
@@ -54,16 +55,12 @@ recorded transactions in their respective month; planned entries are deferred.
 Identical legitimate purchases are allowed. The UI prevents repeated submission
 while saving; content-based matching/deduplication is a separate import feature.
 
-The main view filters by `YYYY-MM` and optionally one owned source. A prominent
-native month picker, labeled Showing entries for, has previous/next controls
-that cross years and stop at 0001-01 / 9999-12. Select-all labels name the period
-to make deletion scope explicit; this never selects entries from other months. The API defaults
-an omitted month to the server's UTC month; the UI explicitly sends its selected
-month, initially the browser's local month. List newest dates first, then creation
-time and ID. The initial list is not paginated. Income sums positive amounts,
-spending is the positive magnitude of expenses, and net is income minus spending.
-No balance observation affects these totals. See the product's recorded-data semantics:
-a selected period does not imply complete bank history.
+The [Dashboard and Entries spec](reporting.md) owns screen navigation, period
+filters, pagination, and reported totals. Income sums positive amounts, spending
+is the positive magnitude of expenses, and net is income minus spending.
+No balance observation affects these totals. The legacy `/transactions` and
+`/summary` API reads retain monthly/source filtering, defaulting to the server's
+UTC month when omitted. New screens send explicit date/month bounds.
 
 Dedicated transfer/refund types remain deferred. Ordinary income/expense entries
 keep their entered meaning; the app does not infer a transfer or linked refund.
@@ -74,9 +71,28 @@ Compact rows keep description and date/source metadata close together, without
 extra disclosure panels. On fine pointers field controls have compact heights;
 coarse pointers retain 44px touch targets. Descriptions, amounts (with income/expense), dates, and sources are activated directly
 in the list. There is no Edit button or global edit mode. The inline form has
-Save/Cancel and Escape; Enter submits native single-input forms. Blur does not save.
+Save/Cancel and Escape; Enter submits native single-input forms. Blur does not save. After saving, focus returns to the edited field once fresh
+results render, or to the workspace heading if the entry left the filtered results.
 Field-specific PATCH requests avoid overwriting unrelated stale fields. Concurrent
 changes to the same field use last-write-wins; optimistic conflict detection is deferred.
+
+Entry selection uses a round native checkbox in the left gutter. Selected entries
+highlight the whole row and show a minus inside the round control, indicating
+that it can be deselected. Clicking the row background or noninteractive metadata
+toggles selection; description/date/source/amount buttons and any inline-form
+interaction retain their existing editing behavior. Selecting text does not select
+a row. Disabled/saving rows ignore background selection. Native checkbox focus
+and Space provide the keyboard equivalent; row containers do not add tab stops.
+Selection does not reset an unsaved inline draft. Entries use separated row
+surfaces without horizontal separators. The dashboard's unshaded latest-entry
+preview retains its horizontal lines.
+
+The background alone flips in over 280 ms on selection and fades out over 160 ms
+on deselection. Text, controls, row height, and spacing remain stationary. Quick
+changes cancel old animations from their current visual state. Initial rendering
+does not animate. Reduced-motion preference disables effects immediately,
+including when enabled mid-animation. Select-all and Clear selection use the same
+row feedback. The selection scope and deletion semantics below are unchanged.
 
 On fine pointers row selection controls reveal on hover or keyboard focus. Reserve
 their space to avoid shifting content. Once any row is selected, show all controls.
@@ -88,7 +104,7 @@ or authentication data.
 Selection is scoped to displayed entries and cleared when filters change or the list
 reloads. Select up to 100 at a time; the select-all label states first 100 when needed.
 The selection line places count, clear selection, and an accessible bin icon
-on the right of the period-specific select-all control, without a separate card.
+on the right of the Select displayed entries control, without a separate card.
 Controls wrap on narrow screens.
 The bin reveals adjacent Delete N entries and Cancel, with period and reimport
 consequences. The bin does not move into the confirmation position. Escape or a
@@ -111,7 +127,9 @@ unknown rather than inferring from source or ambiguous prior import associations
 List responses include `csv_linked`; non-CSV-origin entries with evidence say CSV
 matched. The entry list no longer renders an import-details foldout. The owned provenance
 API remains available (up to 20 rows) for future interfaces and regression tests,
-showing original source, record number, date, description, and amount. Uploaded filenames were never stored and are not invented or exposed.
+showing original source, record number, date, description, and amount. Filenames
+are stored only for new [import-history batches](import-history.md), never inferred
+for older evidence.
 
 ## API
 
@@ -174,11 +192,15 @@ use fresh synthetic databases. Deployment applies the migration on startup.
 rotation, persistence, logout, and CSRF/origin. The expiry policy uses the session
 library and has not been tested with a simulated clock. `frontend/tests/money.test.ts`
 covers exact display/edit values; `frontend/tests/appearance-period.test.ts` covers
-appearance preference validation and bounded month navigation. The desktop/phone
+appearance preference validation and bounded month navigation.
+`frontend/tests/selection-highlight.test.ts` covers flip/fade separation, interrupted
+motion, stale completion callbacks, reduced motion, and action cleanup. The desktop/phone
 journeys in `frontend/e2e/ledger.spec.ts` cover inline editing, selection preferences,
-deletion confirmation, appearance, and month navigation alongside manual entry.
-Browser assertions and screenshot review remain blocked at synthetic server startup;
-the owner previously confirmed login and manual entry locally before this refinement.
+deletion confirmation, round row selection, edit/selection independence, keyboard
+selection, reduced motion, appearance, dashboard navigation, and period filters
+alongside manual entry.
+These browser journeys define coverage, not a claim that their assertions or
+screenshots have been verified; see the README verification status.
 
 ## Appearance and user menu
 

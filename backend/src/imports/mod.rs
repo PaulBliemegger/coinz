@@ -1,3 +1,4 @@
+pub mod history;
 mod parse;
 
 use crate::{
@@ -18,6 +19,7 @@ use uuid::Uuid;
 pub struct Input {
     source_id: String,
     csv: String,
+    filename: Option<String>,
     #[serde(default)]
     decisions: Vec<Decision>,
     selected_records: Option<Vec<usize>>,
@@ -237,6 +239,16 @@ pub async fn commit(
         income_cents: String::new(),
         spending_cents: String::new(),
     };
+    let batch = Uuid::new_v4().to_string();
+    let filename = history::filename(input.filename.as_deref())?;
+    let dates: Vec<_> = preview
+        .rows
+        .iter()
+        .filter(|r| r.row.error.is_none())
+        .map(|r| r.row.date.as_str())
+        .collect();
+    sqlx::query("INSERT INTO import_batches(id,user_id,source_id,filename,start_date,end_date) VALUES(?,?,?,?,?,?)")
+        .bind(&batch).bind(&user.id).bind(&input.source_id).bind(filename).bind(dates.iter().min().copied()).bind(dates.iter().max().copied()).execute(&mut *tx).await?;
     let mut income = Vec::new();
     let mut spending = Vec::new();
     for item in preview.rows {
@@ -271,6 +283,11 @@ pub async fn commit(
                 )
                 .await?;
             }
+            let known_id: Option<String> = sqlx::query_scalar("SELECT transaction_id FROM import_records WHERE user_id=? AND source_id=? AND file_hash=? AND record_number=? AND disposition='accepted'")
+                .bind(&user.id).bind(&input.source_id).bind(&hash).bind(row.record as i64).fetch_optional(&mut *tx).await?.flatten();
+            if let Some(id) = known_id {
+                history::link(&mut tx, &batch, &user.id, &id, "known").await?;
+            }
             outcome.known += 1;
             continue;
         }
@@ -298,6 +315,7 @@ pub async fn commit(
                         "The selected match is no longer available. Preview again.",
                     ));
                 }
+                history::link(&mut tx, &batch, &user.id, transaction_id, "matched").await?;
                 outcome.matched += 1;
                 (Some(transaction_id.clone()), "accepted")
             }
@@ -305,6 +323,7 @@ pub async fn commit(
                 let id = Uuid::new_v4().to_string();
                 sqlx::query("INSERT INTO transactions(id,user_id,source_id,date,description,amount_cents,origin) VALUES(?,?,?,?,?,?,'csv')")
                     .bind(&id).bind(&user.id).bind(&input.source_id).bind(&row.date).bind(&row.description).bind(row.cents).execute(&mut *tx).await?;
+                history::link(&mut tx, &batch, &user.id, &id, "added").await?;
                 outcome.added += 1;
                 if row.cents > 0 {
                     income.push(row.cents);
@@ -335,6 +354,17 @@ pub async fn commit(
     }
     outcome.income_cents = crate::domain::checked_total(income)?.to_string();
     outcome.spending_cents = crate::domain::checked_total(spending)?.to_string();
+    sqlx::query(
+        "UPDATE import_batches SET added=?,matched=?,known=?,excluded=? WHERE id=? AND user_id=?",
+    )
+    .bind(outcome.added as i64)
+    .bind(outcome.matched as i64)
+    .bind(outcome.known as i64)
+    .bind(outcome.excluded as i64)
+    .bind(&batch)
+    .bind(&user.id)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(Json(outcome))
 }
