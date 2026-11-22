@@ -30,7 +30,7 @@ stream. Creating a source requires no balance. Source names are not unique and a
 not identity keys for deduplication. Source editing/deletion is not implemented.
 
 A transaction may omit `source_id` or explicitly set it to null. Both mean no source;
-the UI calls this Manual. The default manual form uses no source, except when opened
+the UI calls the source No source. Entry method is shown separately. The default manual form uses no source, except when opened
 from an active source filter. Source metadata may be attached, replaced, or cleared
 while editing. All provided IDs must belong to the authenticated user. Source/entry writes reject
 unknown fields, including the retired `account_id`, rather than silently discarding
@@ -54,7 +54,10 @@ recorded transactions in their respective month; planned entries are deferred.
 Identical legitimate purchases are allowed. The UI prevents repeated submission
 while saving; content-based matching/deduplication is a separate import feature.
 
-The main view filters by `YYYY-MM` and optionally one owned source. The API defaults
+The main view filters by `YYYY-MM` and optionally one owned source. A prominent
+native month picker, labeled Showing entries for, has previous/next controls
+that cross years and stop at 0001-01 / 9999-12. Select-all labels name the period
+to make deletion scope explicit; this never selects entries from other months. The API defaults
 an omitted month to the server's UTC month; the UI explicitly sends its selected
 month, initially the browser's local month. List newest dates first, then creation
 time and ID. The initial list is not paginated. Income sums positive amounts,
@@ -64,6 +67,51 @@ a selected period does not imply complete bank history.
 
 Dedicated transfer/refund types remain deferred. Ordinary income/expense entries
 keep their entered meaning; the app does not infer a transfer or linked refund.
+
+## Direct editing, selection, and provenance
+
+Compact rows keep description and date/source metadata close together, without
+extra disclosure panels. On fine pointers field controls have compact heights;
+coarse pointers retain 44px touch targets. Descriptions, amounts (with income/expense), dates, and sources are activated directly
+in the list. There is no Edit button or global edit mode. The inline form has
+Save/Cancel and Escape; Enter submits native single-input forms. Blur does not save.
+Field-specific PATCH requests avoid overwriting unrelated stale fields. Concurrent
+changes to the same field use last-write-wins; optimistic conflict detection is deferred.
+
+On fine pointers row selection controls reveal on hover or keyboard focus. Reserve
+their space to avoid shifting content. Once any row is selected, show all controls.
+Touch devices keep controls visible. The separate Settings sidebar contains Always show selection
+controls, defaults off and stores only a boolean in localStorage; storage failure
+keeps the default/session view usable. It does not enable editing or contain finance
+or authentication data.
+
+Selection is scoped to displayed entries and cleared when filters change or the list
+reloads. Select up to 100 at a time; the select-all label states first 100 when needed.
+The selection line places count, clear selection, and an accessible bin icon
+on the right of the period-specific select-all control, without a separate card.
+Controls wrap on narrow screens.
+The bin reveals adjacent Delete N entries and Cancel, with period and reimport
+consequences. The bin does not move into the confirmation position. Escape or a
+second bin click cancels; selection/filter changes reset confirmation. No centered
+modal and no automatic focus on destructive confirmation. Confirmation buttons form a tight group immediately to the left of the bin,
+without a separate card or full-width explanation. The whole action group may
+wrap on phones; do not separate the confirmation from the bin.
+
+Bulk deletion validates all IDs and ownership under one write lock and deletes
+atomically. A missing/foreign ID rejects the entire set; reject empty, duplicate,
+or more-than-100 ID lists. Delete associated import evidence so these entries
+can be imported again. Migration 0006 also clears existing accepted deletion
+markers from older versions. No undo
+is promised. CSRF applies to bulk deletion and inline writes.
+
+`origin` is `manual`, `csv`, or `unknown`, independent of the editable source.
+New manual/API entries have manual origin; new import additions have csv origin.
+Matching adds evidence without changing origin. Migration 0005 leaves older origins
+unknown rather than inferring from source or ambiguous prior import associations.
+List responses include `csv_linked`; non-CSV-origin entries with evidence say CSV
+matched. The entry list no longer renders an import-details foldout. The owned provenance
+API remains available (up to 20 rows) for future interfaces and regression tests,
+showing original source, record number, date, description, and amount. Uploaded filenames were never stored and are not invented or exposed.
 
 ## API
 
@@ -82,13 +130,17 @@ from `/session`.
 | `GET /transactions?month=…&source_id=…` | Filtered owned entries |
 | `POST /transactions` | `source_id`, `date`, `description`, `amount`, `kind` |
 | `PUT /transactions/{id}` | Replace editable fields with the same request shape |
+| `PATCH /transactions/{id}` | Change `field` (`description`, `date`, `source`, `amount`) using `value`; amount also requires `kind` |
+| `POST /transactions/bulk-delete` | Atomically delete 1–100 distinct owned `ids` |
+| `GET /transactions/{id}/provenance` | Up to 20 owned original CSV evidence rows |
 | `DELETE /transactions/{id}` | Delete an owned entry |
 | `GET /summary?month=…&source_id=…` | Income, spending, net, count, month |
 
 Success is 200 for reads/login, 201 for source/entry creation, and 204 for
-update/logout/delete. Domain errors use `{"error":"message"}`: 401 authentication,
-403 CSRF/origin, 404 missing/inaccessible records, and 422 validation. Framework
-JSON/body-size rejections can have another shape, which the UI handles generically.
+entry updates, logout, and deletions (including bulk deletion). Domain errors use
+`{"error":"message"}`: 401 authentication, 403 CSRF/origin, 404 missing/inaccessible
+records, and 422 validation. Framework JSON/body-size rejections can have another
+shape, which the UI handles generically.
 
 ## Preserved legacy data
 
@@ -112,10 +164,32 @@ use fresh synthetic databases. Deployment applies the migration on startup.
   a source includes only its entries; attaching/clearing provenance changes only
   that filter's membership, not the all-source totals.
 - Former Accounts/snapshot routes return 404; no balance CRUD is exposed.
+- Field-specific updates preserve the other entry fields and origin; CSV matches
+  retain the existing entry and expose its original import evidence.
+- A bulk deletion containing a missing or foreign ID rolls back the entire set.
+  Successful deletion releases linked imports for reimport; migration 0006 also
+  removes legacy deletion markers.
 
 `backend/tests/ledger.rs` covers these API and persistence cases along with session
 rotation, persistence, logout, and CSRF/origin. The expiry policy uses the session
 library and has not been tested with a simulated clock. `frontend/tests/money.test.ts`
-covers exact display/edit values; `frontend/e2e/ledger.spec.ts` defines the desktop
-and phone journeys. Browser verification remains limited by sandbox permissions;
+covers exact display/edit values; `frontend/tests/appearance-period.test.ts` covers
+appearance preference validation and bounded month navigation. The desktop/phone
+journeys in `frontend/e2e/ledger.spec.ts` cover inline editing, selection preferences,
+deletion confirmation, appearance, and month navigation alongside manual entry.
+Browser assertions and screenshot review remain blocked at synthetic server startup;
 the owner previously confirmed login and manual entry locally before this refinement.
+
+## Appearance and user menu
+
+Clicking the username opens a native disclosure containing Appearance, Settings,
+and Log out. Escape and outside pointer interaction close it. Settings still opens
+the separate sidebar for selection visibility; no export placeholder is added.
+
+Appearance offers System (default), Light, and Dark. A validated localStorage
+preference (`coinz.appearance`) contains only that enum; missing/invalid/unavailable
+storage means System. Apply the saved choice before initial paint. CSS `color-scheme`
+and `light-dark()` tokens follow OS changes immediately in System mode, including
+native inputs and dialogs. Overrides remain independent of OS changes and persist
+across reloads when storage is available. No financial or authentication data is
+stored with the preference. Backend figures and APIs are unaffected.

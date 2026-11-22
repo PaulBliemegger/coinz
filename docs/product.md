@@ -10,15 +10,22 @@ account balances. Building and learning are also part of the project's value.
 ## Current implementation
 
 Local user creation, login/logout, isolated private data, manual income/expenses,
-editing/deleting entries, monthly summaries, month/source filters, and exact money
-handling. A source is optional provenance metadata, not a bank ledger. A new user
-can record an entry immediately without setup. The warm Sunday Studio palette
+editing/deleting entries, monthly summaries, month/source filters, exact money
+handling, and example-format CSV preview/import with duplicate review. A source
+is optional provenance metadata, not a bank ledger. A new user can record an entry
+immediately without setup. The warm Sunday Studio palette
 and restrained dry humor remain the visual direction.
+
+The [design philosophy](design.md) guides the implemented visual hierarchy,
+selected-row import review, direct editing, and contextual bulk actions. Detailed
+behavior lives in the feature specs.
 
 The account/snapshot interface and API are retired. Existing account identities
 become transaction sources; old opening amounts and snapshots are preserved as
 inactive legacy records. See the [manual-ledger spec](specs/manual-ledger.md).
-Planning, imports, labels, and richer insights are not yet implemented.
+Planning, bank-specific import adapters, labels, and richer insights are not yet
+implemented. The [example importer](specs/csv-import.md) provides a synthetic
+workflow for testing the next ideas.
 
 ## Core experience
 
@@ -71,9 +78,11 @@ ordinary entries. Define these before importing data that would misstate reports
 
 ## Imports and historical data
 
-Support EUR CSVs from N26 and Erste initially. Preview and validate rows before an
-atomic commit; remember mappings for repeat imports. Implement adapters from wholly
-synthetic examples matching the format, never by reading private bank exports.
+The current importer supports the [example CSV format](specs/csv-import.md).
+N26 and Erste are the first planned EUR bank adapters; bank-specific formats and
+saved mappings remain deferred. Preview and validate rows before an atomic commit.
+Implement adapters from wholly synthetic examples matching the format, never by
+reading private bank exports.
 
 Prefer stable bank IDs scoped to the source. Track file/row provenance for repeat
 files. Identical purchases can be legitimate: ambiguous overlaps and manual/import
@@ -86,10 +95,12 @@ includes. A one-off migration is acceptable; no general spreadsheet engine is ne
 
 ## Delivery sequence
 
-1. Finish the spending-first manual workflow and its verification.
-2. Add the first CSV source with preview, duplicate review, and necessary transfer
-   treatment. Refine daily entry and source behavior using synthetic fixtures.
-3. Add labels, bulk organization, useful insight reports, and the second CSV source.
+1. The spending-first manual workflow is implemented; browser/visual verification
+   remains pending.
+2. The [example CSV importer](specs/csv-import.md) is implemented with selected-row
+   preview and duplicate review; browser/visual verification remains pending.
+3. Add labels, bulk labeling, useful insight reports, and N26/Erste adapters.
+   Define transfer/refund treatment before supporting real bank formats.
 4. Migrate useful historical Excel material without overlapping totals, when needed.
 5. Implement monthly budgets/planning, commitments, and one-off scenarios. Consider
    a balance-based calculator only when it answers a concrete decision.

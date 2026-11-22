@@ -12,7 +12,17 @@
     type Transaction,
     type User,
   } from '#lib/api.ts';
-  import { amountInput, dateLabel, localDate, money, monthLabel } from '#lib/money.ts';
+  import { localDate, money, monthLabel } from '#lib/money.ts';
+  import ImportDialog from '#lib/features/imports/ImportDialog.svelte';
+  import EntriesList from '#lib/features/ledger/EntriesList.svelte';
+  import {
+    parseAppearance,
+    setAppearance,
+    appearanceKey,
+    type Appearance,
+  } from '#lib/appearance.ts';
+  import { escapeToCancel } from '#lib/features/ledger/escape.ts';
+  import { adjacentMonth } from '#lib/features/ledger/period.ts';
   import './app.css';
 
   let user = $state<User | null>(null);
@@ -29,14 +39,36 @@
   let sourceFilter = $state('');
   let sourceDialog: HTMLDialogElement;
   let transactionDialog: HTMLDialogElement;
-  let editing = $state<Transaction | null>(null);
-  let deleting = $state(false);
   let entrySource = $state('');
   let entryDate = $state(localDate());
   let entryKind = $state('expense');
   let entryAmount = $state('');
   let entryDescription = $state('');
   let loadVersion = 0;
+  let importOpen = $state(false);
+  let alwaysSelection = $state(false);
+  let settingsDialog: HTMLDialogElement;
+  let userMenu = $state<HTMLDetailsElement>();
+  let appearance = $state<Appearance>('system');
+  function chooseAppearance(value: string) {
+    appearance = parseAppearance(value);
+    setAppearance(appearance);
+  }
+  function moveMonth(direction: -1 | 1) {
+    const next = adjacentMonth(month, direction);
+    if (next) {
+      month = next;
+      changeFilter();
+    }
+  }
+  function saveSelectionPreference(value: boolean) {
+    alwaysSelection = value;
+    try {
+      localStorage.setItem('coinz.always-show-selection', String(value));
+    } catch {
+      /* Keep the preference usable without storage. */
+    }
+  }
 
   const message = (value: unknown) =>
     value instanceof Error ? value.message : 'Something went wrong. Please try again.';
@@ -56,6 +88,17 @@
     }
   }
   onMount(() => {
+    try {
+      alwaysSelection = localStorage.getItem('coinz.always-show-selection') === 'true';
+    } catch {
+      /* Default visibility applies. */
+    }
+    try {
+      appearance = parseAppearance(localStorage.getItem(appearanceKey));
+    } catch {
+      /* Follow the system. */
+    }
+    document.documentElement.dataset.appearance = appearance;
     void bootstrap();
   });
 
@@ -155,15 +198,13 @@
     }
   }
 
-  async function openEntry(transaction: Transaction | null = null) {
-    editing = transaction;
-    entrySource = transaction ? (transaction.source_id ?? '') : sourceFilter;
-    entryDate = transaction?.date ?? localDate();
-    entryKind = transaction && BigInt(transaction.amount_cents) > 0n ? 'income' : 'expense';
-    entryAmount = transaction ? amountInput(transaction.amount_cents) : '';
-    entryDescription = transaction?.description ?? '';
+  async function openEntry() {
+    entrySource = sourceFilter;
+    entryDate = localDate();
+    entryKind = 'expense';
+    entryAmount = '';
+    entryDescription = '';
     formError = '';
-    deleting = false;
     await tick();
     transactionDialog.showModal();
   }
@@ -173,19 +214,15 @@
     busy = true;
     formError = '';
     try {
-      await api(
-        editing ? `/transactions/${editing.id}` : '/transactions',
-        editing ? 'PUT' : 'POST',
-        {
-          source_id: entrySource || null,
-          date: entryDate,
-          kind: entryKind,
-          amount: entryAmount,
-          description: entryDescription,
-        },
-      );
+      await api('/transactions', 'POST', {
+        source_id: entrySource || null,
+        date: entryDate,
+        kind: entryKind,
+        amount: entryAmount,
+        description: entryDescription,
+      });
       transactionDialog.close();
-      notice = editing ? 'Transaction updated.' : 'Transaction recorded.';
+      notice = 'Transaction recorded.';
       const entryMonth = entryDate.slice(0, 7);
       if (entryMonth !== month) {
         month = entryMonth;
@@ -200,27 +237,18 @@
     }
   }
 
-  async function deleteEntry() {
-    if (!editing) return;
-    busy = true;
-    formError = '';
-    try {
-      await api(`/transactions/${editing.id}`, 'DELETE');
-      transactionDialog.close();
-      notice = 'Transaction deleted.';
-      await loadData();
-    } catch (cause) {
-      formError = message(cause);
-    } finally {
-      busy = false;
-    }
-  }
-
   function changeFilter() {
     notice = '';
     void loadData();
   }
 </script>
+
+<svelte:window
+  onpointerdown={(event) => {
+    if (userMenu?.open && event.target instanceof Node && !userMenu.contains(event.target))
+      userMenu.open = false;
+  }}
+/>
 
 <svelte:head>
   <title>coinz · A little clarity</title>
@@ -276,11 +304,42 @@
     <header class="topbar">
       <a href={resolve('/')} class="wordmark" aria-label="coinz home">coinz<span>.</span></a>
       <span class="tagline">A little clarity for your everyday.</span>
-      <div class="user-menu">
-        <span>{user.username}</span><button class="button quiet" onclick={logout} disabled={busy}>
-          Log out
-        </button>
-      </div>
+      <details
+        class="user-menu"
+        bind:this={userMenu}
+        use:escapeToCancel={() => {
+          if (userMenu) {
+            userMenu.open = false;
+            userMenu.querySelector('summary')?.focus();
+          }
+        }}
+      >
+        <summary>{user.username} <span aria-hidden="true">▾</span></summary>
+        <div class="user-dropdown">
+          <label>
+            Appearance<select
+              value={appearance}
+              onchange={(event) => chooseAppearance(event.currentTarget.value)}
+            >
+              <option value="system">System</option><option value="light">Light</option><option
+                value="dark"
+              >
+                Dark
+              </option>
+            </select>
+          </label>
+          <button
+            class="button quiet"
+            onclick={() => {
+              if (userMenu) userMenu.open = false;
+              settingsDialog.showModal();
+            }}
+          >
+            Settings
+          </button>
+          <button class="button quiet" onclick={logout} disabled={busy}>Log out</button>
+        </div>
+      </details>
     </header>
     <main class="notebook" aria-busy={loading}>
       <div class="page-heading">
@@ -289,26 +348,51 @@
           <h1>Where did it go?</h1>
           <p class="muted">A closer look at the entries you've recorded.</p>
         </div>
-        <button class="button primary" onclick={() => openEntry()} disabled={busy}>
-          + Add transaction
-        </button>
+        <div class="delete-actions">
+          <button class="button" onclick={() => (importOpen = true)} disabled={busy}>
+            Import CSV
+          </button>
+          <button class="button primary" onclick={() => openEntry()} disabled={busy}>
+            + Add transaction
+          </button>
+        </div>
       </div>
       {#if error}<div class="error banner" role="alert">
           {error}<button class="button quiet" onclick={loadData} disabled={loading}>Retry</button>
         </div>{/if}
       {#if notice}<p class="notice" role="status">{notice}</p>{/if}
       <section class="period-controls" aria-label="Transaction filters">
-        <label>
-          Month<input
-            aria-label="Month"
-            type="month"
-            min="0001-01"
-            max="9999-12"
-            bind:value={month}
-            onchange={changeFilter}
-            required
-          />
-        </label>
+        <div class="month-picker">
+          <button
+            type="button"
+            class="button"
+            aria-label="Previous month"
+            disabled={!adjacentMonth(month, -1)}
+            onclick={() => moveMonth(-1)}
+          >
+            ‹
+          </button>
+          <label>
+            Showing entries for<input
+              aria-label="Month"
+              type="month"
+              min="0001-01"
+              max="9999-12"
+              bind:value={month}
+              onchange={changeFilter}
+              required
+            />
+          </label>
+          <button
+            type="button"
+            class="button"
+            aria-label="Next month"
+            disabled={!adjacentMonth(month, 1)}
+            onclick={() => moveMonth(1)}
+          >
+            ›
+          </button>
+        </div>
         <label>
           Source<select bind:value={sourceFilter} onchange={changeFilter}>
             <option value="">All sources</option>{#each sources as source (source.id)}<option
@@ -351,7 +435,7 @@
       <div class="ledger-workspace">
         <section class="ledger" aria-labelledby="ledger-heading">
           <div class="section-heading">
-            <h2 id="ledger-heading">The entries</h2>
+            <h2 id="ledger-heading" tabindex="-1">The entries</h2>
             <span class="muted">{month ? monthLabel(month) : 'Choose a month'}</span>
           </div>
           {#if loading}<div class="empty-state"><p>Updating your notebook…</p></div>
@@ -365,46 +449,41 @@
               <button class="button" onclick={() => openEntry()}>Add a transaction</button>
             </div>
           {:else}
-            <table>
-              <caption class="sr-only">
-                Recorded transactions for {monthLabel(month)}{sourceFilter
-                  ? ' in the selected source'
-                  : ' across all sources'}
-              </caption><thead>
-                <tr>
-                  <th>Date</th><th>Description</th><th>Source</th><th class="number">
-                    Amount
-                  </th><th><span class="sr-only">Actions</span></th>
-                </tr>
-              </thead><tbody>
-                {#each transactions as transaction (transaction.id)}<tr>
-                    <td class="entry-date">{dateLabel(transaction.date)}</td><td
-                      class="entry-description"
-                    >
-                      {transaction.description}
-                    </td><td class="entry-source">{transaction.source_name ?? 'Manual'}</td><td
-                      class:income={BigInt(transaction.amount_cents) > 0n}
-                      class="number entry-amount"
-                    >
-                      {money(transaction.amount_cents, true)}
-                    </td><td class="entry-action">
-                      <button
-                        class="button icon-button"
-                        aria-label={`Edit ${transaction.description}`}
-                        onclick={() => openEntry(transaction)}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>{/each}
-              </tbody>
-            </table>
+            {#key `${user.id}:${month}:${sourceFilter}`}
+              <EntriesList
+                always={alwaysSelection}
+                entries={transactions}
+                {sources}
+                {month}
+                onchanged={async (message) => {
+                  notice = message;
+                  await loadData();
+                }}
+              />
+            {/key}
           {/if}
         </section>
       </div>
       <footer>coinz · Small steps. Fewer financial mysteries.</footer>
     </main>
   </div>
+{/if}
+
+{#if user && importOpen}
+  <ImportDialog
+    {sources}
+    initialSource={sourceFilter}
+    onclose={() => {
+      importOpen = false;
+      void loadData();
+    }}
+    onimported={async (result, source) => {
+      notice = `Import complete: ${result.added} added, ${result.matched} matched, ${result.known} already processed, ${result.excluded} left for later.`;
+      sourceFilter = source;
+      if (result.latest_month) month = result.latest_month;
+      await loadData();
+    }}
+  />
 {/if}
 
 <dialog
@@ -449,7 +528,7 @@
     <div class="dialog-heading">
       <div>
         <p class="eyebrow">IN THE NOTEBOOK</p>
-        <h2 id="transaction-title">{editing ? 'Edit transaction' : 'Add a transaction'}</h2>
+        <h2 id="transaction-title">Add a transaction</h2>
       </div>
       <button
         type="button"
@@ -500,30 +579,83 @@
       </button>
     </div>
     {#if formError}<p class="error" role="alert">{formError}</p>{/if}
-    <button class="button primary full" disabled={busy || deleting}>
-      {busy ? 'Saving…' : editing ? 'Save changes' : 'Record transaction'}
+    <button class="button primary full" disabled={busy}>
+      {busy ? 'Saving…' : 'Record transaction'}
     </button>
-    {#if editing}<div class="delete-area">
-        {#if deleting}<p>Delete this transaction? Its amount will be removed from your records.</p>
-          <div class="delete-actions">
-            <button type="button" class="button" onclick={() => (deleting = false)} disabled={busy}>
-              Keep it
-            </button><button
-              type="button"
-              class="button destructive"
-              onclick={deleteEntry}
-              disabled={busy}
-            >
-              Delete transaction
-            </button>
-          </div>{:else}<button
-            type="button"
-            class="button quiet danger-text"
-            onclick={() => (deleting = true)}
-            disabled={busy}
-          >
-            Delete transaction
-          </button>{/if}
-      </div>{/if}
   </form>
 </dialog>
+
+<dialog bind:this={settingsDialog} class="settings-panel" aria-labelledby="settings-title">
+  <div class="dialog-heading">
+    <h2 id="settings-title">Settings</h2>
+    <button
+      type="button"
+      class="button quiet"
+      onclick={() => settingsDialog.close()}
+      aria-label="Close settings"
+    >
+      Close
+    </button>
+  </div>
+  <h3>Appearance</h3>
+  <label class="setting-toggle">
+    <input
+      type="checkbox"
+      checked={alwaysSelection}
+      onchange={(event) => saveSelectionPreference(event.currentTarget.checked)}
+    />Always show selection controls
+  </label>
+  <p class="muted">Otherwise controls appear on hover or focus. Touch screens always show them.</p>
+</dialog>
+
+<style>
+  .user-menu {
+    position: relative;
+    display: block;
+    margin-left: auto;
+  }
+  .user-menu summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+  .user-dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 10;
+    width: min(260px, calc(100vw - 2.5rem));
+    padding: 1rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 35px #0002;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .settings-panel {
+    margin: 0 0 0 auto;
+    height: 100svh;
+    max-height: 100svh;
+    width: min(420px, 100%);
+    border-radius: 0;
+  }
+  .settings-panel h3 {
+    margin: 2rem 0 1rem;
+  }
+  .setting-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .setting-toggle input {
+    width: 19px;
+    min-height: 19px;
+    accent-color: var(--accent);
+  }
+</style>

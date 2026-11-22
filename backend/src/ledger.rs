@@ -93,6 +93,8 @@ struct TransactionRow {
     date: String,
     description: String,
     amount_cents: i64,
+    origin: String,
+    csv_linked: bool,
 }
 
 #[derive(Serialize)]
@@ -103,6 +105,8 @@ pub struct Transaction {
     date: String,
     description: String,
     amount_cents: String,
+    origin: String,
+    csv_linked: bool,
 }
 
 async fn filtered_rows(
@@ -112,7 +116,8 @@ async fn filtered_rows(
 ) -> Result<(String, Vec<TransactionRow>)> {
     let (month, start, end) = filter.bounds(pool, owner).await?;
     let rows = sqlx::query_as::<_, TransactionRow>(
-        "SELECT t.id, t.source_id, a.name AS source_name, t.date, t.description, t.amount_cents
+        "SELECT t.id, t.source_id, a.name AS source_name, t.date, t.description, t.amount_cents, t.origin,
+         EXISTS(SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.transaction_id=t.id AND r.disposition='accepted') AS csv_linked
          FROM transactions t LEFT JOIN transaction_sources a ON a.id = t.source_id AND a.user_id = t.user_id
          WHERE t.user_id = ? AND t.date >= ? AND t.date < ? AND (? IS NULL OR t.source_id = ?)
          ORDER BY t.date DESC, t.created_at DESC, t.id DESC",
@@ -143,6 +148,8 @@ pub async fn transactions(
                 date: row.date,
                 description: row.description,
                 amount_cents: row.amount_cents.to_string(),
+                origin: row.origin,
+                csv_linked: row.csv_linked,
             })
             .collect(),
     ))
@@ -180,7 +187,7 @@ pub async fn create_transaction(
     let (description, amount) = input.validate(&state.pool, &user.id).await?;
     let id = Uuid::new_v4().to_string();
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
-    sqlx::query("INSERT INTO transactions (id, user_id, source_id, date, description, amount_cents) VALUES (?, ?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO transactions (id, user_id, source_id, date, description, amount_cents, origin) VALUES (?, ?, ?, ?, ?, ?, 'manual')")
         .bind(&id).bind(&user.id).bind(&input.source_id).bind(input.date).bind(description).bind(amount).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
@@ -220,6 +227,130 @@ pub async fn delete_transaction(
             .ok_or_else(AppError::not_found)?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "field", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ChangeField {
+    Description { value: String },
+    Amount { value: String, kind: domain::Kind },
+    Date { value: String },
+    Source { value: Option<String> },
+}
+
+pub async fn change_field(
+    State(state): State<AppState>,
+    session: Session,
+    Path(id): Path<String>,
+    Json(input): Json<ChangeField>,
+) -> Result<StatusCode> {
+    let user = auth::user(&session, &state.pool).await?;
+    let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
+    let changed = match input {
+        ChangeField::Description { value } => {
+            sqlx::query("UPDATE transactions SET description=? WHERE id=? AND user_id=?")
+                .bind(domain::text(&value, "Description", 200)?)
+                .bind(&id)
+                .bind(&user.id)
+                .execute(&mut *tx)
+                .await?
+        }
+        ChangeField::Amount { value, kind } => {
+            sqlx::query("UPDATE transactions SET amount_cents=? WHERE id=? AND user_id=?")
+                .bind(kind.amount(&value)?)
+                .bind(&id)
+                .bind(&user.id)
+                .execute(&mut *tx)
+                .await?
+        }
+        ChangeField::Date { value } => {
+            domain::date(&value)?;
+            sqlx::query("UPDATE transactions SET date=? WHERE id=? AND user_id=?")
+                .bind(value)
+                .bind(&id)
+                .bind(&user.id)
+                .execute(&mut *tx)
+                .await?
+        }
+        ChangeField::Source { value } => {
+            if let Some(source) = &value {
+                owned_source(&state.pool, &user.id, source).await?;
+            }
+            sqlx::query("UPDATE transactions SET source_id=? WHERE id=? AND user_id=?")
+                .bind(value)
+                .bind(&id)
+                .bind(&user.id)
+                .execute(&mut *tx)
+                .await?
+        }
+    };
+    if changed.rows_affected() != 1 {
+        return Err(AppError::not_found());
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BulkDelete {
+    ids: Vec<String>,
+}
+
+pub async fn bulk_delete(
+    State(state): State<AppState>,
+    session: Session,
+    Json(input): Json<BulkDelete>,
+) -> Result<StatusCode> {
+    let user = auth::user(&session, &state.pool).await?;
+    let unique = input.ids.iter().collect::<std::collections::HashSet<_>>();
+    if input.ids.is_empty() || input.ids.len() > 100 || unique.len() != input.ids.len() {
+        return Err(AppError::invalid(
+            "Select between 1 and 100 distinct entries per deletion.",
+        ));
+    }
+    let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
+    for id in input.ids {
+        let result = sqlx::query("DELETE FROM transactions WHERE id=? AND user_id=?")
+            .bind(id)
+            .bind(&user.id)
+            .execute(&mut *tx)
+            .await?;
+        if result.rows_affected() != 1 {
+            return Err(AppError::not_found());
+        }
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize, FromRow)]
+pub struct Provenance {
+    source_name: String,
+    record_number: i64,
+    date: String,
+    description: String,
+    amount_cents: String,
+}
+
+pub async fn provenance(
+    State(state): State<AppState>,
+    session: Session,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<Provenance>>> {
+    let user = auth::user(&session, &state.pool).await?;
+    let owned: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transactions WHERE id=? AND user_id=?)")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_one(&state.pool)
+            .await?;
+    if !owned {
+        return Err(AppError::not_found());
+    }
+    let rows = sqlx::query_as::<_,Provenance>("SELECT s.name AS source_name,r.record_number,r.date,r.description,CAST(r.amount_cents AS TEXT) AS amount_cents FROM import_records r JOIN transaction_sources s ON s.id=r.source_id AND s.user_id=r.user_id WHERE r.user_id=? AND r.transaction_id=? AND r.disposition='accepted' ORDER BY r.created_at,r.file_hash,r.record_number LIMIT 20")
+        .bind(&user.id).bind(id).fetch_all(&state.pool).await?;
+    Ok(Json(rows))
 }
 
 #[derive(Serialize)]

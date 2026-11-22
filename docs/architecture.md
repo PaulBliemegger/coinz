@@ -1,8 +1,9 @@
 # Architecture and repository structure
 
-Status: the foundation is implemented. Browser and container runtime verification
-remain pending. Product behavior lives in [specs](specs/README.md); commands and
-operations live in the [README](../README.md).
+Status: the manual ledger, example CSV importer, inline editing, bulk deletion,
+and view preferences are implemented. Browser/visual and container runtime
+verification remain pending. Product behavior lives in [specs](specs/README.md);
+commands and operations live in the [README](../README.md).
 
 ## Runtime
 
@@ -10,6 +11,9 @@ One Rust/Axum process serves `/api` and the built SvelteKit 3 static interface.
 SQLite uses SQLx, versioned migrations, foreign keys, WAL, and a busy timeout.
 There is one Rust crate and one frontend package. Docker uses separate build
 stages; only the binary, static assets, and runtime system dependencies ship.
+
+The application tracks `Cargo.lock`; Rust checks and production builds use
+`--locked` to keep native and container builds on the reviewed dependency resolution.
 
 During development, Vite serves the UI and proxies `/api` to Rust. Deployment uses
 one origin. Rust owns authorization, validation, persistence, and financial
@@ -31,6 +35,7 @@ backend/
     lib.rs                Application/router assembly
     auth.rs               Identity, sessions, CSRF
     ledger.rs             Optional sources, entries, summaries and their SQL
+    imports/              CSV parsing, preview, matching and atomic commit
     domain.rs             Pure parsing/calculation rules
     db.rs                 SQLite setup and migrations
     error.rs              Shared safe API errors
@@ -39,6 +44,7 @@ backend/
 frontend/
   AGENTS.md               Svelte/TypeScript conventions
   src/routes/             Screen composition and page styles
+  src/lib/features/       Import review and ledger list/inline entry interactions
   src/lib/api.ts          HTTP types/client and session token boundary
   src/lib/money.ts        Exact amount/date display helpers
   tests/                  Focused frontend logic tests
@@ -92,6 +98,19 @@ scaffolding directories, generic utility collections, and required layers.
   own a user independently of the optional source. The source join is a left join
   so manual entries remain in reports. Composite foreign keys enforce source
   ownership when a source is supplied.
+- Imports reparse a bounded CSV for preview/commit, keeping preview stateless.
+  Commit revalidates under `BEGIN IMMEDIATE` so repeated/concurrent submits are
+  idempotent. Migration 0004 stores file/record and source-scoped bank evidence
+  separately from mutable transactions, preserving edits. Migration 0006 releases deleted entries for reimport,
+  removes old accepted deletion markers, and deletes linked evidence before entry deletion.
+  The raw uploaded file is not persisted. The import dialog is a separate frontend
+  feature component; the ledger page coordinates refresh and filters.
+- Migration 0005 adds explicit entry origin without guessing legacy history.
+  Field-specific PATCH operations preserve unrelated edits; bulk deletion validates
+  every owned ID in one write transaction. Import selection is revalidated at
+  commit. Selection visibility stores a local boolean; appearance stores a validated enum,
+  initialized before paint and applied through CSS theme tokens. Neither contains
+  financial data. Appearance defaults to OS-driven System mode.
 - Source metadata is not a balance ledger. Migration 0003 preserves old account
   identities as sources and retains retired balance tables without exposing an API.
   The optional future calculator must not depend on legacy observations.

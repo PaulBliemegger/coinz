@@ -7,9 +7,10 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 | Spec | State | Scope |
 | --- | --- | --- |
 | [Manual ledger](manual-ledger.md) | Implemented; full verification pending | Identity, optional sources, entries, period totals, preserved legacy data |
+| [Example CSV import](csv-import.md) | Implemented; browser verification pending | Fixed example format, preview, duplicate review, atomic commit |
 | [Planning](planning.md) | Proposed; not implemented | Monthly assumptions, commitments, one-off scenarios, optional later calculator |
 
-Imports, labels, and richer insights remain product direction. Write their detailed
+Labels and richer insights remain product direction. Write their detailed
 specs just before implementation using useful questions and wholly synthetic source
 samples. Account balances, reconciliation, and historical balance reconstruction
 are outside the core. Snapshot APIs/UI have been retired; legacy data remains stored.

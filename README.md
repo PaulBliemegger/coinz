@@ -7,24 +7,54 @@ dry humor. Rust/Axum serves a static SvelteKit interface and stores data in SQLi
 
 Implemented: local user creation, login/logout, isolated user data, manual income
 and expenses without setup, optional source metadata, editing/deleting entries,
-month/source filters, and recorded monthly income/spending/net totals.
+month/source filters, recorded monthly income/spending/net totals, and an
+example-format CSV importer with selected-row review, direct field editing,
+contextual bulk deletion, and compact source/import-method labels.
 
-The core is Transactions, Insights, and Planning. Richer insights, labels, CSVs,
-and planning remain future work; no empty placeholder screens are added. Bank
-balance tracking and reconciliation are not required. A balance-based What-if
+The core is Transactions, Insights, and Planning. Richer insights, labels, bank
+CSV adapters, and planning remain future work; no empty placeholder screens are
+added. Bank balance tracking and reconciliation are not required. A balance-based What-if
 calculator may follow when useful. See [product scope](docs/product.md) and the
 [planning direction](docs/specs/planning.md).
 
+Try **Import CSV** on the transaction screen using [demo.csv](examples/imports/demo.csv).
+Create a fresh source, preview the 16 synthetic entries (new entries start selected),
+then import. It opens November 2026 with €2,400.00 income and €1,063.79 spending.
+Importing the same file again adds nothing;
+[demo-overlap.csv](examples/imports/demo-overlap.csv) adds just a €16 cinema expense.
+Use a synthetic development runtime for this walkthrough.
+
+The importer accepts only the [documented example format](docs/specs/csv-import.md),
+up to 256 KiB / 1,000 records. It supports excluding rows for later and explicit keep/match decisions for
+possible duplicates and preserves existing entries when matched. N26/Erste formats,
+transfers, refunds, and arbitrary column mapping are not supported yet.
+
+Migration 0006 makes deleted imports available again and repairs older deletion
+markers. Restart the backend after updating so the migration runs before reimporting.
+Migration 0005 records entry origin; older entries remain unknown rather than guessed.
+Migration 0004 adds import provenance without changing existing entries.
 Migration 0003 preserves old account names/IDs as transaction sources and makes the
 entry source optional. Old opening figures and snapshots remain stored but have
 no active screen/API and do not affect reports. Back up private data before
 reviewing/deploying changes; the agent does not inspect your running database.
 
-Rust tests/lint, frontend checks/tests, and native production builds pass. Browser
-journeys remain unverified: the sandbox denies the synthetic server's local socket.
+`make check` passes formatting, lint, Rust tests, frontend type/unit checks, and
+native production builds. It stops at Playwright server startup because the sandbox
+denies local sockets; browser journeys and visual review remain unverified.
+The latest frontend checks ran with Node 26.13.1 and reported an engine warning;
+the supported project version remains Node 24.22.3.
 An earlier Docker image built successfully; this revision has not been deployed or
 verified against a running container by the agent. This is an early development
 version.
+
+Click an entry’s description, amount, date, or source to change it in place.
+Selection reveals a bulk toolbar; the bin asks for a separate inline confirmation.
+**Settings** opens a separate sidebar with the always-visible selection preference.
+Bulk actions stay on the selection line. Deleted entries can be imported again.
+Appearance follows the system by default. Click your username to choose System,
+Light, or Dark; that dropdown also opens Settings and Log out. Rows are compact
+and have no import-detail foldout. The prominent month picker and previous/next
+controls clarify which period you are viewing and selecting.
 
 ## Real data privacy
 
@@ -122,6 +152,10 @@ make hooks
 
 It runs the fast checks on the working tree. No Git initialization, commit, remote,
 or hook installation has been performed automatically.
+
+`Cargo.lock` is tracked for this application. Rust checks and production builds use
+`--locked` so they use the reviewed dependency resolution. Include lockfile changes
+when intentionally updating Rust dependencies.
 
 ## Tests and checks
 
