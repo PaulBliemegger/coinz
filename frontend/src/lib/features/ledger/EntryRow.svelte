@@ -1,5 +1,8 @@
 <script lang="ts">
   import { escapeToCancel } from './escape.ts';
+  import SelectionHighlight from '#lib/components/selection/SelectionHighlight.svelte';
+  import RoundSelection from '#lib/components/selection/RoundSelection.svelte';
+  import { rowSelection } from '#lib/components/selection/row-selection.ts';
   import { tick } from 'svelte';
   import { api, type Transaction, type Source } from '#lib/api.ts';
   import { money, amountInput, dateLabel } from '#lib/money.ts';
@@ -77,15 +80,19 @@
   }
 </script>
 
-<li class="entry-row">
-  <label class="selection-control">
-    <span class="sr-only">Select {entry.description}</span><input
-      type="checkbox"
-      checked={selected}
-      disabled={disabled || busy}
-      onchange={(event) => onselect(event.currentTarget.checked)}
-    />
-  </label>
+<li
+  class="entry-row"
+  class:selected
+  class:selection-disabled={disabled || busy}
+  use:rowSelection={{ selected, disabled: disabled || busy, onselect }}
+>
+  <SelectionHighlight {selected} />
+  <RoundSelection
+    label={`Select ${entry.description}`}
+    {selected}
+    disabled={disabled || busy}
+    {onselect}
+  />
   <div class="entry-content">
     <button
       type="button"
@@ -183,21 +190,21 @@
 <style>
   .entry-row {
     display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) auto;
+    position: relative;
+    isolation: isolate;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
     gap: 0.5rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--line);
+    padding: 0.5rem 0.75rem 0.5rem 0.25rem;
+    border-radius: 0.65rem;
+    cursor: pointer;
+    background: var(--paper);
   }
-  .selection-control {
-    min-height: 44px;
-    display: flex;
-    align-items: center;
+  .entry-row.selection-disabled {
+    cursor: default;
   }
-  input[type='checkbox'] {
-    width: 19px;
-    min-height: 19px;
-    margin: 0;
-    accent-color: var(--accent);
+  .entry-row > :global(:not(.selection-highlight)) {
+    position: relative;
+    z-index: 1;
   }
   .field {
     font: inherit;
@@ -258,7 +265,7 @@
   @media (hover: hover) and (pointer: fine) {
     :global(.entries-list:not(.show-selection))
       .entry-row:not(:hover):not(:focus-within)
-      .selection-control {
+      :global(.selection-control) {
       opacity: 0;
     }
   }
@@ -269,7 +276,7 @@
   }
   @media (max-width: 420px) {
     .entry-row {
-      grid-template-columns: 20px minmax(0, 1fr);
+      grid-template-columns: 44px minmax(0, 1fr);
     }
     .amount {
       grid-column: 2;

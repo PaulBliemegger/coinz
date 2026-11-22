@@ -10,8 +10,9 @@ account balances. Building and learning are also part of the project's value.
 ## Current implementation
 
 Local user creation, login/logout, isolated private data, manual income/expenses,
-editing/deleting entries, monthly summaries, month/source filters, exact money
-handling, and example-format CSV preview/import with duplicate review. A source
+editing/deleting entries, a home dashboard with monthly/yearly spending, a
+paginated Entries workspace with period/search filters, exact money handling,
+and example-format CSV preview/import with duplicate review and batch history. A source
 is optional provenance metadata, not a bank ledger. A new user can record an entry
 immediately without setup. The warm Sunday Studio palette
 and restrained dry humor remain the visual direction.
@@ -23,14 +24,15 @@ behavior lives in the feature specs.
 The account/snapshot interface and API are retired. Existing account identities
 become transaction sources; old opening amounts and snapshots are preserved as
 inactive legacy records. See the [manual-ledger spec](specs/manual-ledger.md).
-Planning, bank-specific import adapters, labels, and richer insights are not yet
-implemented. The [example importer](specs/csv-import.md) provides a synthetic
-workflow for testing the next ideas.
+Planning, configurable import profiles, bank-specific import adapters, labels,
+and richer insights are not yet implemented. The
+[example importer](specs/csv-import.md) provides a synthetic workflow for testing
+the next ideas.
 
 ## Core experience
 
 - **Transactions:** record or import income and expenses, label them, and filter
-  by period and source. Routine manual entry should stay short.
+  by period and search (source filtering remains available in the legacy API). Routine manual entry should stay short.
 - **Insights:** explore period income/spending/net, merchants, labels, recurring
   costs, and comparisons. Charts link to their underlying transactions.
 - **Planning:** monthly expected income/spending, budget targets, recurring
@@ -79,32 +81,45 @@ ordinary entries. Define these before importing data that would misstate reports
 ## Imports and historical data
 
 The current importer supports the [example CSV format](specs/csv-import.md).
-N26 and Erste are the first planned EUR bank adapters; bank-specific formats and
-saved mappings remain deferred. Preview and validate rows before an atomic commit.
-Implement adapters from wholly synthetic examples matching the format, never by
-reading private bank exports.
+[Reusable import profiles](specs/import-profiles.md) have an approved Guided
+selection design for supporting different CSV layouts without a programmed
+adapter for each one. Implementation remains proposed.
+They map columns and parsing settings before the existing import overview; YAML
+sharing and file-managed declarative setup are desired later work. N26 and Erste
+remain initial target export streams,
+with dedicated adapters only if configurable mappings cannot cover a demonstrated
+need. Profiles and bank-specific support are not implemented. Preview and validate
+rows before an atomic commit. Develop format support from wholly synthetic
+examples matching the format, never by reading private bank exports.
 
 Prefer stable bank IDs scoped to the source. Track file/row provenance for repeat
 files. Identical purchases can be legitimate: ambiguous overlaps and manual/import
 matches need review rather than silent deletion. Matching preserves user labels
-and notes. Changing a source does not prove two purchases are the same.
+and notes. Batch-removal ownership and edited-entry protection are defined in
+[import history](specs/import-history.md). Changing a source does not prove two
+purchases are the same.
 
 The old Excel material includes both summaries and individual entries. Summary
 coverage must remain separate so it cannot be added to detailed entries it already
 includes. A one-off migration is acceptable; no general spreadsheet engine is needed.
 
-## Delivery sequence
+Clean entry CSV export/reimport is a desired future capability for portable
+transaction copies. Full database recovery remains a separate operational backup
+concern. See [entry export and reimport](specs/data-portability.md).
 
-1. The spending-first manual workflow is implemented; browser/visual verification
-   remains pending.
-2. The [example CSV importer](specs/csv-import.md) is implemented with selected-row
-   preview and duplicate review; browser/visual verification remains pending.
-3. Add labels, bulk labeling, useful insight reports, and N26/Erste adapters.
-   Define transfer/refund treatment before supporting real bank formats.
-4. Migrate useful historical Excel material without overlapping totals, when needed.
-5. Implement monthly budgets/planning, commitments, and one-off scenarios. Consider
+## Next slices
+
+Current implemented behavior is summarized above and detailed in the
+[specification index](specs/README.md). Work on one coherent slice at a time:
+
+1. Implement the approved [CSV import-profile design](specs/import-profiles.md).
+   Add labels, bulk labeling, and useful insight reports through separate slices.
+   N26/Erste remain target export streams; define transfer/refund treatment before
+   supporting real bank formats.
+2. Migrate useful historical Excel material without overlapping totals, when needed.
+3. Implement monthly budgets/planning, commitments, and one-off scenarios. Consider
    a balance-based calculator only when it answers a concrete decision.
-6. Iterate using feedback. Optional humor/rewards must not become finance-core data
+4. Iterate using feedback. Optional humor/rewards must not become finance-core data
    dependencies; reward reviewing/organizing, never income/spending amounts.
 
 ## Boundaries and maintenance

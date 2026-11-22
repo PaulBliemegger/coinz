@@ -1,13 +1,13 @@
 # Example CSV import
 
-Status: implemented; browser/visual verification pending because the development
-sandbox denies local sockets. The checked-in examples are wholly synthetic,
+Status: implemented; current verification limits are in the
+[README](../../README.md#verification-status). The checked-in examples are wholly synthetic,
 not N26 or Erste format samples. This extends the [manual ledger](manual-ledger.md)
 with a small working importer, not a configurable import framework.
 
 ## First workflow
 
-1. Open Import from the transaction screen and choose or create a source.
+1. Open Import CSV from Home, Entries, or Imports and choose or create a source.
 2. Select a CSV in the example format below.
 3. Preview dated income/expenses, validation errors, and duplicate candidates.
 4. Select additions and explicitly match or keep any duplicates you want to include.
@@ -100,10 +100,12 @@ not embedded into this initial CSV contract.
 ## HTTP contract
 
 `POST /api/imports/preview` and `POST /api/imports/commit` accept JSON with
-`source_id`, `csv` (the decoded file text), optional `decisions` (default `[]`),
+`source_id`, `csv` (the decoded file text), optional `filename` (display basename),
+optional `decisions` (default `[]`),
 and optional `selected_records` (CSV record numbers). The UI always sends explicit
 selection; an omitted selection retains legacy whole-file import behavior.
-Neither endpoint stores the uploaded file. Preview writes no entries/provenance;
+Neither endpoint stores the uploaded file itself. Commit stores a batch with
+counts, display filename and entry associations; see [import history](import-history.md). Preview writes no entries/provenance;
 creating a source is a separate explicit operation and survives cancellation.
 
 Preview returns `{ rows }`, each with `record`, `date`, `description`,
@@ -132,8 +134,8 @@ whole-file validation and automatic inclusion of new rows apply.
 Return `{ added, matched, skipped, known, excluded, income_cents, spending_cents,
 latest_month }`. `excluded` counts non-known rows left out by explicit selection;
 selected-addition totals are calculated by the server with checked integer cents.
-The month is the latest newly added entry's month or null. The UI selects that
-month/source after success; matches-only imports keep the month. Refresh failure
+The month is the latest newly added entry's month or null. The UI refreshes the
+current view without changing its period or source scope. Refresh failure
 after success must not suggest resubmitting the mutation.
 
 ## Review interface
@@ -142,6 +144,13 @@ Show attention-needed entries first, ready entries below, and known rows in a
 collapsed excluded group, independent of CSV ordering. New valid rows start
 selected; review/conflict/invalid rows do not. Select-all affects only eligible
 new/explicitly-kept rows. Matches are disclosed separately from additions.
+
+Selectable rows use the same round checkbox, whole-row highlight, and flip-in /
+fade-out feedback as Entries. Clicking a row's noninteractive content toggles
+inclusion. Native checkbox/Space remains available; duplicate decisions and
+Import details disclosures never toggle selection. Busy, known, invalid,
+conflicting, or unresolved rows cannot be selected through row clicks. These
+visual controls do not change duplicate decisions or import eligibility.
 
 The dialog body scrolls while the bottom selection totals, counts, and import
 action remain visible. Show how many rows will be left for later. Keep descriptions
@@ -176,14 +185,14 @@ manual matching, conflicts, mixed blank/stable IDs in either order, selected-row
 exclusions, atomic rollback, CSRF, two-user isolation, request limits, and concurrent
 submissions. `frontend/tests/import-selection.test.ts` covers exact selected totals,
 explicit match decisions, and leaving rows for later without permanent skips.
-`frontend/e2e/ledger.spec.ts` defines desktop/phone preview-cancel-import-repeat-overlap
-and selected-subset journeys, plus synthetic screenshots. Those browser assertions
-and screenshots remain unverified while socket startup is blocked.
-No private exports or running private app are needed.
+`frontend/e2e/ledger.spec.ts` defines desktop/phone preview, selected-subset,
+repeat-preview and reimport journeys with batch removal, plus synthetic screenshots.
+The README records whether those browser assertions/screenshots have been
+verified. No private exports or running private app are needed.
 
 ## Deferred
 
-Bank-specific adapters and saved mappings, arbitrary column mapping, Excel,
-transfer/refund treatment, and label/report UI are separate slices. Use feedback
-from this working example to decide their flows rather than designing all screens
-now.
+Reusable column mapping and parsing settings are proposed in
+[CSV import profiles](import-profiles.md); they are not implemented here.
+Bank-specific adapters, Excel, transfer/refund treatment, and label/report UI
+remain separate work. YAML profile sharing is deferred in the profile proposal.

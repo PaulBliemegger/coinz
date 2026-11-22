@@ -103,3 +103,61 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
+
+export interface Totals {
+  income_cents: string;
+  spending_cents: string;
+  net_cents: string;
+  transaction_count: number;
+}
+export interface EntriesPage {
+  entries: Transaction[];
+  totals: Totals;
+  page: number;
+  pages: number;
+  page_size: number;
+}
+export interface DashboardData {
+  month: string;
+  monthly: Totals;
+  yearly: Totals;
+  months: (Totals & { month: string })[];
+  latest: Transaction[];
+  latest_date: string | null;
+  latest_import: string | null;
+}
+export interface ImportBatch {
+  id: string;
+  filename: string;
+  source_name: string;
+  created_at: string;
+  start_date: string | null;
+  end_date: string | null;
+  added: number;
+  matched: number;
+  known: number;
+  excluded: number;
+  removed: number;
+}
+export interface ImportEntryPreview {
+  id: string;
+  date: string;
+  description: string;
+  amount_cents: string;
+  overlapping: boolean;
+}
+export interface ImportReview {
+  batch: ImportBatch;
+  removable: number;
+  edited: number;
+  overlapping: number;
+  already_deleted: number;
+  removable_entries: ImportEntryPreview[];
+  edited_entries: ImportEntryPreview[];
+  token: string;
+}
+export interface ImportHistoryPage {
+  batches: ImportBatch[];
+  page: number;
+  pages: number;
+}

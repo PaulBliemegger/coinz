@@ -11,6 +11,7 @@
   --accent: light-dark(#a14b32, #edb29a);
   --accent-hover: light-dark(#873c27, #f4c2ad);
   --soft: light-dark(#f0e2d2, #3a2f27);
+  --selection-fill: light-dark(#f3e2d5, #443128);
   --review-fill: light-dark(#f6ecd9, #403321);
   --review-ink: light-dark(#80551c, #e4c18b);
   --status-fill: light-dark(#edf1e7, #2b392b);
@@ -796,5 +797,254 @@ dialog form {
   }
   .period-controls .month-picker + label {
     width: auto;
+  }
+}
+
+.main-nav {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.main-nav a {
+  color: var(--muted);
+  padding: 0.7rem 0.9rem;
+  border-radius: 999px;
+  text-decoration: none;
+  min-height: 44px;
+}
+.main-nav a[aria-current='page'] {
+  color: var(--ink);
+  background: var(--soft);
+}
+.workspace-filters,
+.search-form,
+.dashboard-actions,
+.pagination,
+.removal-actions {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.workspace-filters {
+  padding: 1rem 0;
+}
+.workspace-filters > label {
+  max-width: 190px;
+}
+.search-form {
+  margin-left: auto;
+}
+.period-pills {
+  display: flex;
+  flex-wrap: wrap;
+  border: 0;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+}
+.period-pills label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.period-pills label.chosen {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: light-dark(#fffaf4, #302016);
+}
+.period-pills input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+}
+.period-pills label:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.result-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem 3rem;
+  padding: 1.5rem 0;
+}
+.result-totals small,
+.result-totals strong {
+  display: block;
+}
+.result-totals small {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.result-totals strong {
+  font-size: 1.65rem;
+  font-weight: 500;
+}
+.pagination {
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem 0 0;
+}
+.dashboard-actions {
+  justify-content: flex-end;
+  margin: 1.5rem 0 0.75rem;
+}
+.annual {
+  margin-top: 1.5rem;
+}
+.spending-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(3px, 1vw, 15px);
+  height: 190px;
+  margin: 1.5rem 0 0;
+}
+.chart-month {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+.bar-track {
+  height: 150px;
+  width: 100%;
+  display: flex;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+}
+.bar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 6px 6px 0 0;
+}
+.chart-month:hover .bar {
+  background: var(--accent-hover);
+}
+.chart-table summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-top: 0.5rem;
+}
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.chart-table td,
+.chart-table th {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.latest-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.latest-entries li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.latest-entries li > div {
+  min-width: 0;
+}
+.latest-entries li > div span {
+  display: block;
+  font-size: 0.875rem;
+}
+.latest-entries strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.latest-entries li > strong {
+  flex-shrink: 0;
+}
+.income {
+  color: var(--status-ink);
+}
+.view-all {
+  display: block;
+  text-align: center;
+  min-height: 44px;
+  padding-top: 1rem;
+  color: var(--accent);
+}
+.batch-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.batch-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.batch-list h2,
+.import-detail h2 {
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+.batch-list p {
+  margin: 0.4rem 0;
+}
+.import-detail {
+  margin-top: 1rem;
+}
+.import-detail p {
+  margin: 1rem 0;
+}
+.include-edited {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+.include-edited input {
+  width: 20px;
+  accent-color: var(--accent);
+}
+@media (max-width: 620px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .main-nav {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .search-form {
+    margin-left: 0;
+    width: 100%;
+  }
+  .search-form label {
+    flex: 1;
+    min-width: 0;
+  }
+  .dashboard-actions {
+    justify-content: flex-start;
+  }
+  .batch-list li {
+    align-items: start;
+    flex-direction: column;
+  }
+  .latest-entries li > strong {
+    flex-shrink: 1;
+    text-align: right;
   }
 }

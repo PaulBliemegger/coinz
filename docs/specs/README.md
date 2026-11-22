@@ -6,9 +6,18 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 
 | Spec | State | Scope |
 | --- | --- | --- |
-| [Manual ledger](manual-ledger.md) | Implemented; full verification pending | Identity, optional sources, entries, period totals, preserved legacy data |
-| [Example CSV import](csv-import.md) | Implemented; browser verification pending | Fixed example format, preview, duplicate review, atomic commit |
+| [Manual ledger](manual-ledger.md) | Implemented | Identity, optional sources, entries, period totals, preserved legacy data |
+| [Example CSV import](csv-import.md) | Implemented | Fixed example format, preview, duplicate review, atomic commit |
+| [CSV import profiles](import-profiles.md) | Design approved; implementation proposed | Reusable profiles, guided CSV table mapping, one Description field, editable import review |
+| [Dashboard and Entries](reporting.md) | Implemented | Dashboard, chart, date/search filters, pagination, all-result totals |
+| [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |
+| [Entry export and reimport](data-portability.md) | Deferred; not implemented | Portable CSV copies, native reimport, boundary with full backups |
 | [Planning](planning.md) | Proposed; not implemented | Monthly assumptions, commitments, one-off scenarios, optional later calculator |
+
+Implemented means the behavior exists in source; it does not imply completed
+browser/visual verification. The [README](../../README.md#verification-status)
+records the current shared verification status. Proposed/deferred specs describe
+future behavior, not capabilities of the running app.
 
 Labels and richer insights remain product direction. Write their detailed
 specs just before implementation using useful questions and wholly synthetic source

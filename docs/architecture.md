@@ -1,9 +1,8 @@
 # Architecture and repository structure
 
-Status: the manual ledger, example CSV importer, inline editing, bulk deletion,
-and view preferences are implemented. Browser/visual and container runtime
-verification remain pending. Product behavior lives in [specs](specs/README.md);
-commands and operations live in the [README](../README.md).
+This document owns runtime structure and technical decisions. See the
+[specification index](specs/README.md) for feature status and behavior, and the
+[README](../README.md#verification-status) for current verification limits.
 
 ## Runtime
 
@@ -34,17 +33,20 @@ backend/
     main.rs               CLI, configuration, server lifecycle
     lib.rs                Application/router assembly
     auth.rs               Identity, sessions, CSRF
-    ledger.rs             Optional sources, entries, summaries and their SQL
-    imports/              CSV parsing, preview, matching and atomic commit
+    ledger.rs             Optional sources, entry writes and legacy monthly reads
+    reports.rs            Paginated entry queries and dashboard read snapshots
+    imports/              CSV parsing, preview, matching, commit and batch history
     domain.rs             Pure parsing/calculation rules
     db.rs                 SQLite setup and migrations
     error.rs              Shared safe API errors
   migrations/             Versioned SQL
-  tests/ledger.rs         Real database and API integration tests
+  tests/ledger.rs         Temporary SQLite and API integration tests
 frontend/
   AGENTS.md               Svelte/TypeScript conventions
-  src/routes/             Screen composition and page styles
-  src/lib/features/       Import review and ledger list/inline entry interactions
+  src/routes/             Home, Entries, Imports routes and shared page styles
+  src/lib/App.svelte      Session shell, navigation, shared entry/import actions
+  src/lib/features/       Dashboard, Entries, import review and batch removal
+  src/lib/components/     Reused visual/interaction primitives
   src/lib/api.ts          HTTP types/client and session token boundary
   src/lib/money.ts        Exact amount/date display helpers
   tests/                  Focused frontend logic tests
@@ -56,18 +58,10 @@ docs/
   architecture.md         Runtime, boundaries, structure and major tradeoffs
   specs/                  Detailed behavior and acceptance examples by feature
   agent-testing.md        Sandbox-specific test guidance
+  feature-workflow.md     Small feature chats, reviews and temporary handovers
 Dockerfile / compose.yaml Deployment definition
 Makefile                  Named, repeatable development/check commands
 ```
-
-## Product boundary
-
-Transactions, period insights, and planning are the core. Optional import/source
-metadata supports provenance, duplicate matching, and future transfer recognition.
-No account bookkeeping or balance maintenance is required. Planning is not yet
-implemented; its future monthly scenarios can work without a starting bank balance.
-A balance-based What-if calculator is an optional later capability, not a runtime
-or schema dependency of expense tracking.
 
 ## How this grows
 
@@ -100,20 +94,32 @@ scaffolding directories, generic utility collections, and required layers.
   ownership when a source is supplied.
 - Imports reparse a bounded CSV for preview/commit, keeping preview stateless.
   Commit revalidates under `BEGIN IMMEDIATE` so repeated/concurrent submits are
-  idempotent. Migration 0004 stores file/record and source-scoped bank evidence
-  separately from mutable transactions, preserving edits. Migration 0006 releases deleted entries for reimport,
-  removes old accepted deletion markers, and deletes linked evidence before entry deletion.
-  The raw uploaded file is not persisted. The import dialog is a separate frontend
-  feature component; the ledger page coordinates refresh and filters.
-- Migration 0005 adds explicit entry origin without guessing legacy history.
-  Field-specific PATCH operations preserve unrelated edits; bulk deletion validates
-  every owned ID in one write transaction. Import selection is revalidated at
-  commit. Selection visibility stores a local boolean; appearance stores a validated enum,
-  initialized before paint and applied through CSS theme tokens. Neither contains
-  financial data. Appearance defaults to OS-driven System mode.
-- Source metadata is not a balance ledger. Migration 0003 preserves old account
-  identities as sources and retains retired balance tables without exposing an API.
-  The optional future calculator must not depend on legacy observations.
+  idempotent. Original file/record and source-scoped bank evidence live separately
+  from mutable transactions (migration 0004); raw uploads are not persisted.
+  Deletion clears linked evidence and permits reimport (migration 0006).
+  Batch counts/member roles and transaction revisions (migration 0007) support
+  removal with a review fingerprint rechecked under the write lock. Existing
+  `added` versus `known`/`matched` roles express one creating batch without an
+  additional ownership table. See [import history](specs/import-history.md) for
+  removal rules and the [CSV spec](specs/csv-import.md) for matching semantics.
+- Field-specific PATCH operations preserve unrelated entry edits. Migration 0005
+  stores explicit entry origin independently of editable source metadata.
+  Migration 0003 preserves former accounts as sources and retires balance tables;
+  the [ledger spec](specs/manual-ledger.md#preserved-legacy-data) owns those guarantees.
+- The session shell coordinates shared entry/import actions and refreshes active
+  feature reads after mutations. Feature components ignore superseded responses.
+  Reporting uses checked integer totals in Rust and one read transaction per
+  response, avoiding SQLite integer SUM overflow. It loads matching amounts,
+  not all entry metadata; streaming aggregation can follow if volume warrants it.
+- Appearance initializes before paint through CSS theme tokens. Local view
+  preferences contain no financial or authentication data; see
+  [appearance behavior](specs/manual-ledger.md#appearance-and-user-menu).
+  Entries and selectable import rows share components and Svelte actions under
+  `src/lib/components/selection/`. Separate fade and rotating-background layers
+  preserve 3D faces, cancel interrupted effects, and clean up listeners. No
+  animation package or backend selection state is needed. The dashboard's
+  month-only picker uses native buttons and a year input, avoiding a day-calendar
+  dependency; [reporting](specs/reporting.md) defines navigation and focus behavior.
 - Password hashing uses Argon2id; `tower-sessions` and its SQLx SQLite store manage
   opaque sessions. No custom crypto or session-token implementation.
 - Migrations run on connection/startup. Expired session records are cleaned at app

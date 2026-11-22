@@ -1,18 +1,17 @@
 <script lang="ts">
   import { escapeToCancel } from './escape.ts';
   import { api, type Transaction, type Source } from '#lib/api.ts';
-  import { monthLabel } from '#lib/money.ts';
   import EntryRow from './EntryRow.svelte';
   let {
     entries,
     sources,
-    month,
+    scope,
     always,
     onchanged,
   }: {
     entries: Transaction[];
     sources: Source[];
-    month: string;
+    scope: string;
     always: boolean;
     onchanged: (notice: string) => Promise<void>;
   } = $props();
@@ -56,7 +55,7 @@
     <label class="select-all">
       <input
         type="checkbox"
-        aria-label={`Select entries for ${monthLabel(month)}`}
+        aria-label="Select displayed entries"
         disabled={busy}
         checked={entries.length > 0 &&
           entries.slice(0, 100).every((entry) => selected.includes(entry.id))}
@@ -70,9 +69,7 @@
             : [];
         }}
       />
-      {entries.length > 100
-        ? `Select first 100 for ${monthLabel(month)}`
-        : `Select ${monthLabel(month)} entries`}
+      {entries.length > 100 ? `Select first 100 for ${scope}` : 'Select displayed entries'}
     </label>
     {#if selected.length}
       <section
@@ -131,7 +128,7 @@
               Cancel
             </button>
             <span class="sr-only">
-              {monthLabel(month)} · Deleted entries can be imported again.
+              {scope} · Deleted entries can be imported again.
             </span>
           </div>
         </div>
@@ -175,6 +172,8 @@
     accent-color: var(--accent);
   }
   ul {
+    display: grid;
+    gap: 0.35rem;
     list-style: none;
     padding: 0;
     margin: 0;

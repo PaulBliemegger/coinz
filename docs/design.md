@@ -1,8 +1,8 @@
 # Design philosophy
 
-Status: established direction. The agreed import review, direct editing, selection,
-and view preference are implemented; browser/visual verification remains pending.
-[Feature specs](specs/README.md) own detailed interaction and financial rules.
+Status: established direction. [Feature specs](specs/README.md) own detailed
+interaction rules and implementation status; the
+[README](../README.md#verification-status) records current verification limits.
 
 ## Warm, quiet, useful
 
@@ -29,29 +29,39 @@ and view preference are implemented; browser/visual verification remains pending
 
 ## Import and entry interactions
 
-The approved Review tray groups attention-needed imports before ready entries,
-with a persistent bottom import action. Selection means a deliberate subset, and
-leaving a row out must not silently ignore it forever. See the authoritative
-[CSV behavior](specs/csv-import.md#review-interface).
+Keep imported transactions readable as entries, rather than exposing the CSV's
+row structure as the primary interface. Put review decisions before ready items,
+and keep the final action within reach. The
+[CSV review spec](specs/csv-import.md#review-interface) owns grouping, selection,
+and duplicate decisions; [import history](specs/import-history.md) owns removal
+previews and edit protection.
 
-Entries look like read-mode content at rest, with direct field activation and
-contextual selection controls. Bulk deletion confirms beside the stationary bin;
-users do not have to leave the toolbar. Source and entry method remain distinct, on a compact secondary line. Import
-detail foldouts are removed until a clearer need emerges. A prominent period
-picker and period-specific selection labels make the scope visible.
-See [ledger interactions](specs/manual-ledger.md#direct-editing-selection-and-provenance).
+Entries should read like a notebook at rest. Direct field activation avoids an
+extra edit mode, and whole-row feedback makes selection clear. Motion should
+support that feedback without moving the text or controls. See
+[ledger interactions](specs/manual-ledger.md#direct-editing-selection-and-provenance)
+for selection, animation, editing, and deletion rules.
+
+Home answers the quick overview question; Entries supports exploring the records.
+Keep the displayed period prominent and the scope of actions explicit. The
+[reporting spec](specs/reporting.md) owns dashboard layout, the centered month
+picker, filters, and pagination.
+
+The approved [Guided selection design](specs/import-profiles.md#approved-interaction-design)
+extends import setup with table-header mapping and description editing in review.
+It is proposed, not implemented. The spec records the interaction so future work
+does not depend on a chat-only prototype.
 
 ## Small view preferences
 
-The username dropdown offers Appearance (System / Light / Dark), Settings, and
-Log out. The separate Settings sidebar holds **Always show selection controls**, off by default
-on devices with hover. It changes visibility only; direct editing stays available
-in both views. Touch and keyboard accessibility override visual hiding as above.
-Keep one compact Settings entry point for present and future preferences. Export
-is future work; do not add a nonfunctional export control. Avoid a layout builder
-or a preference for every spacing/color decision. A considered default
-is part of the product. Appearance defaults to System; explicit overrides are
-small local preferences, not a configurable theme builder. Add another option only after a recurring need appears.
+A considered default is part of the product. Keep a compact preference entry
+point; add an option only after a recurring need appears. Appearance and selection
+visibility are small personal preferences, not a layout or theme builder.
+Essential touch and keyboard controls must remain available regardless of visual
+hiding. The [ledger spec](specs/manual-ledger.md#appearance-and-user-menu) owns the
+current user menu and appearance behavior; selection visibility is defined in its
+[interaction section](specs/manual-ledger.md#direct-editing-selection-and-provenance).
+Do not add nonfunctional controls for future settings or export.
 
 ## Evolution
 
