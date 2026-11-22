@@ -1,9 +1,14 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { api, type DashboardData } from '#lib/api.ts';
+  import { api, ApiError, type DashboardData } from '#lib/api.ts';
   import { localDate, money, monthLabel, dateLabel } from '#lib/money.ts';
   import MonthPicker from './MonthPicker.svelte';
-  let { refresh, onadd, onimport }: { refresh: number; onadd: () => void; onimport: () => void } =
+  let {
+    refresh,
+    onadd,
+    onimport,
+    onunauthorized,
+  }: { onunauthorized: () => void; refresh: number; onadd: () => void; onimport: () => void } =
     $props();
   let month = $state(localDate().slice(0, 7));
   let data = $state<DashboardData | null>(null);
@@ -31,7 +36,8 @@
         if (active) data = value;
       })
       .catch((cause) => {
-        if (active)
+        if (active && cause instanceof ApiError && cause.status === 401) onunauthorized();
+        else if (active)
           error = cause instanceof Error ? cause.message : 'Could not load the dashboard.';
       })
       .finally(() => {

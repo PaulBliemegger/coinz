@@ -14,7 +14,8 @@ are normalized to lowercase ASCII letters/numbers plus dot, underscore, or hyphe
 
 Sessions are stored in SQLite and use an opaque HttpOnly, SameSite=Strict cookie,
 with seven-day inactivity expiry. Login rotates the session ID and CSRF token;
-logout invalidates the session. Failed login uses a generic credential error.
+logout invalidates the session. Unauthorized feature reads return the interface to
+login, including after logout in another tab; logging in refreshes the CSRF token. Failed login uses a generic credential error.
 HTTPS deployments enable the Secure cookie flag.
 
 Private reads and writes require a valid user. Source or transaction IDs owned
@@ -70,7 +71,8 @@ Compact rows keep description and date/source metadata close together, without
 extra disclosure panels. On fine pointers field controls have compact heights;
 coarse pointers retain 44px touch targets. Descriptions, amounts (with income/expense), dates, and sources are activated directly
 in the list. There is no Edit button or global edit mode. The inline form has
-Save/Cancel and Escape; Enter submits native single-input forms. Blur does not save.
+Save/Cancel and Escape; Enter submits native single-input forms. Blur does not save. After saving, focus returns to the edited field once fresh
+results render, or to the workspace heading if the entry left the filtered results.
 Field-specific PATCH requests avoid overwriting unrelated stale fields. Concurrent
 changes to the same field use last-write-wins; optimistic conflict detection is deferred.
 

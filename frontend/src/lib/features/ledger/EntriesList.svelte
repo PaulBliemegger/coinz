@@ -13,7 +13,7 @@
     sources: Source[];
     scope: string;
     always: boolean;
-    onchanged: (notice: string) => Promise<void>;
+    onchanged: (notice: string, focusId?: string) => Promise<void>;
   } = $props();
   let selected = $state<string[]>([]);
   let confirm = $state(false);

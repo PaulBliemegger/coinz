@@ -87,6 +87,17 @@ test('dashboard, entry workspace, exact totals, editing, filters, theme and logo
   await page.getByLabel('Amount', { exact: true }).fill('13.34');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('spending')).toHaveText('€13.34');
+  await expect(
+    page.getByRole('button', { name: 'Change amount: A very precise lunch', exact: true }),
+  ).toBeFocused();
+  await page
+    .getByRole('button', { name: 'Change date: A very precise lunch', exact: true })
+    .click();
+  await page.getByLabel('Date', { exact: true }).fill('2026-11-04');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Change date: A very precise lunch', exact: true }),
+  ).toBeFocused();
   await page.getByLabel('Search descriptions').fill('lunch');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByTestId('income')).toHaveText('€0.00');
@@ -466,4 +477,59 @@ test('overlapping imports retain one creator and disclose cross-import removals'
   await page.getByRole('radio', { name: 'Custom', exact: true }).check();
   await expect(page.getByText('1 matching', { exact: true })).toBeVisible();
   await expect(page.getByTestId('spending')).toHaveText('€3.00');
+});
+
+for (const view of ['dashboard', 'entries', 'imports']) {
+  test(`${view} returns to login after logout in another tab`, async ({ page }, info) => {
+    await login(page, `${info.project.name}-user`);
+    if (view === 'entries') await page.getByRole('link', { name: 'View all' }).click();
+    if (view === 'imports')
+      await page.route(
+        '**/api/imports/history*',
+        (route) => route.fulfill({ status: 503, json: { error: 'Synthetic read failure' } }),
+        { times: 1 },
+      );
+    if (view === 'imports') await page.getByRole('link', { name: 'Imports', exact: true }).click();
+    if (view !== 'imports')
+      await expect(page.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+    const otherTab = await page.context().newPage();
+    await otherTab.goto('/');
+    await expect(otherTab.getByRole('heading', { name: 'The bigger picture.' })).toBeVisible();
+    const response = await otherTab.request.post('/api/logout', {
+      headers: { 'X-CSRF-Token': await csrf(otherTab) },
+    });
+    expect(response.ok()).toBeTruthy();
+    await otherTab.close();
+    if (view === 'dashboard')
+      await page.getByRole('button', { name: 'Next month', exact: true }).click();
+    if (view === 'entries') {
+      await page.getByLabel('Search descriptions').fill('expired session');
+      await page.getByRole('button', { name: 'Search', exact: true }).click();
+    }
+    if (view === 'imports') {
+      await page.getByRole('button', { name: 'Reload', exact: true }).click();
+    }
+    await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible();
+    await page.getByLabel('Username', { exact: true }).fill(`${info.project.name}-user`);
+    await page.getByLabel('Password', { exact: true }).fill('synthetic-browser-password');
+    await page.getByRole('button', { name: 'Log in', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+  });
+}
+
+test('saving an entry outside its search results focuses the workspace heading', async ({
+  page,
+}, info) => {
+  await login(page, `${info.project.name}-user`);
+  await clean(page);
+  await add(page, 'Focus fixture', '1.00', '2026-11-03');
+  await page.getByRole('link', { name: 'View all' }).click();
+  await page.getByLabel('Search descriptions').fill('Focus fixture');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Change description: Focus fixture', exact: true })
+    .click();
+  await page.getByLabel('Description', { exact: true }).fill('Renamed fixture');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Entries workspace', exact: true })).toBeFocused();
 });

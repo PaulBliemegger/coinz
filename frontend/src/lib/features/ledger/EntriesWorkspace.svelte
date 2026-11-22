@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteURLSearchParams } from 'svelte/reactivity';
-  import { onMount } from 'svelte';
-  import { api, type EntriesPage, type Source } from '#lib/api.ts';
+  import { onMount, tick } from 'svelte';
+  import { api, ApiError, type EntriesPage, type Source } from '#lib/api.ts';
   import { localDate, money } from '#lib/money.ts';
   import EntriesList from './EntriesList.svelte';
   let {
@@ -9,7 +9,9 @@
     always,
     refresh,
     onchanged,
+    onunauthorized,
   }: {
+    onunauthorized: () => void;
     sources: Source[];
     always: boolean;
     refresh: number;
@@ -26,6 +28,11 @@
   let loading = $state(false);
   let error = $state('');
   let retry = $state(0);
+  let pendingFocus: string | undefined;
+  async function changed(notice: string, focusId?: string) {
+    pendingFocus = focusId;
+    await onchanged(notice);
+  }
   onMount(() => {
     const params = new SvelteURLSearchParams(window.location.search);
     if (params.has('all') || params.has('start') || params.has('end')) {
@@ -67,10 +74,22 @@
         }
       })
       .catch((cause) => {
-        if (active) error = cause instanceof Error ? cause.message : 'Could not load entries.';
+        if (active) {
+          if (cause instanceof ApiError && cause.status === 401) onunauthorized();
+          else error = cause instanceof Error ? cause.message : 'Could not load entries.';
+        }
       })
-      .finally(() => {
-        if (active) loading = false;
+      .finally(async () => {
+        if (active) {
+          loading = false;
+          await tick();
+          if (active && pendingFocus) {
+            (
+              document.getElementById(pendingFocus) ?? document.getElementById('ledger-heading')
+            )?.focus();
+            pendingFocus = undefined;
+          }
+        }
       });
     return () => {
       active = false;
@@ -78,6 +97,7 @@
   });
 </script>
 
+<h2 id="ledger-heading" tabindex="-1" class="sr-only">Entries workspace</h2>
 <section class="workspace-filters" aria-label="Entry filters">
   <fieldset class="period-pills">
     <legend class="sr-only">Period</legend>
@@ -171,7 +191,7 @@
           {sources}
           {always}
           scope="this page"
-          {onchanged}
+          onchanged={changed}
         />{/key}
     {:else}<div class="empty-state">
         <h3>Nothing recorded for this period.</h3>

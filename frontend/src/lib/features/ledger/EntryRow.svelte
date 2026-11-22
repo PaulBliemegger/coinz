@@ -19,7 +19,7 @@
     selected: boolean;
     disabled: boolean;
     onselect: (checked: boolean) => void;
-    onchanged: (notice: string) => Promise<void>;
+    onchanged: (notice: string, focusId?: string) => Promise<void>;
   } = $props();
   type Field = 'description' | 'amount' | 'date' | 'source';
   let field = $state<Field | null>(null);
@@ -66,12 +66,7 @@
         ...(field === 'amount' ? { kind } : {}),
       });
       field = null;
-      await onchanged('Transaction updated.');
-      await tick();
-      (
-        document.getElementById(`entry-${entry.id}-${savedField}`) ??
-        document.getElementById('ledger-heading')
-      )?.focus();
+      await onchanged('Transaction updated.', `entry-${entry.id}-${savedField}`);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'Could not update this entry.';
     } finally {

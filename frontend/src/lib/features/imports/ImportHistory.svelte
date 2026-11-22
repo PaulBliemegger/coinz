@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type ImportHistoryPage, type ImportReview } from '#lib/api.ts';
+  import { api, ApiError, type ImportHistoryPage, type ImportReview } from '#lib/api.ts';
   import { dateLabel } from '#lib/money.ts';
   import ImportRemovalEntries from './ImportRemovalEntries.svelte';
   import { escapeToCancel } from '#lib/features/ledger/escape.ts';
@@ -7,8 +7,13 @@
     refresh,
     onchanged,
     onimport,
-  }: { refresh: number; onchanged: (notice: string) => Promise<void>; onimport: () => void } =
-    $props();
+    onunauthorized,
+  }: {
+    onunauthorized: () => void;
+    refresh: number;
+    onchanged: (notice: string) => Promise<void>;
+    onimport: () => void;
+  } = $props();
   let history = $state<ImportHistoryPage | null>(null);
   let review = $state<ImportReview | null>(null);
   let page = $state(1);
@@ -59,7 +64,8 @@
         }
       })
       .catch((cause) => {
-        if (active)
+        if (active && cause instanceof ApiError && cause.status === 401) onunauthorized();
+        else if (active)
           error = cause instanceof Error ? cause.message : 'Could not load import history.';
       })
       .finally(() => {

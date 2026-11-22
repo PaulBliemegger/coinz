@@ -84,6 +84,16 @@
     void bootstrap();
   });
 
+  function sessionExpired() {
+    ++loadVersion;
+    user = null;
+    sources = [];
+    importOpen = false;
+    notice = '';
+    loading = false;
+    error = 'Your session has ended. Please log in again.';
+  }
+
   async function loadData() {
     const version = ++loadVersion;
     loading = true;
@@ -96,8 +106,7 @@
     } catch (cause) {
       if (version !== loadVersion) return;
       if (cause instanceof ApiError && cause.status === 401) {
-        user = null;
-        sources = [];
+        sessionExpired();
       }
       error = message(cause);
     } finally {
@@ -348,17 +357,20 @@
         </div>{/if}
       {#if notice}<p class="notice" role="status">{notice}</p>{/if}
       {#if view === 'home'}<Dashboard
+          onunauthorized={sessionExpired}
           {refresh}
           onadd={() => void openEntry()}
           onimport={() => (importOpen = true)}
         />
       {:else if view === 'entries'}<EntriesWorkspace
+          onunauthorized={sessionExpired}
           {sources}
           always={alwaysSelection}
           {refresh}
           onchanged={changed}
         />
       {:else}<ImportHistory
+          onunauthorized={sessionExpired}
           {refresh}
           onchanged={changed}
           onimport={() => (importOpen = true)}
