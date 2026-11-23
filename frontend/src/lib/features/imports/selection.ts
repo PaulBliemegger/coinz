@@ -8,6 +8,7 @@ export function importSelection(
   const additions = rows.filter(
     (row) =>
       selected.includes(row.record) &&
+      !row.description_error &&
       (row.status === 'new' || (row.status === 'review' && choices[row.record] === 'keep')),
   );
   const matches = rows.filter(

@@ -36,6 +36,7 @@ export interface ImportRow {
   amount_cents: string;
   external_id: string;
   error: string | null;
+  description_error?: string | null;
   status: 'new' | 'known' | 'review' | 'conflict' | 'invalid';
   candidates: { id: string; date: string; description: string; amount_cents: string }[];
 }
@@ -160,4 +161,26 @@ export interface ImportHistoryPage {
   batches: ImportBatch[];
   page: number;
   pages: number;
+}
+
+export interface ImportLayout {
+  date: string;
+  amount: string;
+  description: string;
+  external_id: string | null;
+  delimiter: ',' | ';';
+  date_format: 'YYYY-MM-DD' | 'DD.MM.YYYY' | 'DD/MM/YYYY';
+  decimal: '.' | ',';
+  grouping: '' | '.' | ',' | ' ';
+}
+export interface ImportProfile {
+  id: string;
+  name: string;
+  revision: number;
+  layout: ImportLayout;
+}
+export interface CsvSample {
+  headers: string[];
+  sample: string[][];
+  total: number;
 }

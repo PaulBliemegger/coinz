@@ -33,3 +33,22 @@ test('selected additions have exact totals, explicit matches, and no permanent s
   ]);
   assert.deepEqual(importSelection(rows, [], {}).records, []);
 });
+
+test('a missing description blocks additions without blocking an explicit match', () => {
+  const row: ImportRow = {
+    record: 2,
+    status: 'new',
+    amount_cents: '-123',
+    date: '2026-11-03',
+    description: '',
+    description_error: 'Add description',
+    external_id: '',
+    error: null,
+    candidates: [],
+  };
+  assert.deepEqual(importSelection([row], [2], {}).records, []);
+  const edited = { ...row, description: 'Lunch with Sam', description_error: null };
+  assert.deepEqual(importSelection([edited], [2], {}).records, [2]);
+  const duplicate = { ...row, status: 'review' as const };
+  assert.deepEqual(importSelection([duplicate], [], { 2: 'match:owned' }).records, [2]);
+});

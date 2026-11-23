@@ -7,8 +7,8 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 | Spec | State | Scope |
 | --- | --- | --- |
 | [Manual ledger](manual-ledger.md) | Implemented | Identity, optional sources, entries, period totals, preserved legacy data |
-| [Example CSV import](csv-import.md) | Implemented | Fixed example format, preview, duplicate review, atomic commit |
-| [CSV import profiles](import-profiles.md) | Design approved; implementation proposed | Reusable profiles, guided CSV table mapping, one Description field, editable import review |
+| [CSV import and duplicate review](csv-import.md) | Implemented | Example format, shared duplicate review, atomic commit |
+| [CSV import profiles](import-profiles.md) | Implemented; browser verification blocked | Reusable profiles and independent editor, guided CSV table mapping, editable import review |
 | [Dashboard and Entries](reporting.md) | Implemented | Dashboard, chart, date/search filters, pagination, all-result totals |
 | [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |
 | [Entry export and reimport](data-portability.md) | Deferred; not implemented | Portable CSV copies, native reimport, boundary with full backups |

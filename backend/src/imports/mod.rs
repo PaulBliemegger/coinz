@@ -1,5 +1,6 @@
 pub mod history;
 mod parse;
+pub mod profiles;
 
 use crate::{
     AppState, auth,
@@ -18,6 +19,11 @@ use uuid::Uuid;
 #[serde(deny_unknown_fields)]
 pub struct Input {
     source_id: String,
+    profile_id: Option<String>,
+    profile_revision: Option<i64>,
+    layout: Option<profiles::Layout>,
+    #[serde(default)]
+    descriptions: HashMap<usize, String>,
     csv: String,
     filename: Option<String>,
     #[serde(default)]
@@ -62,6 +68,7 @@ struct PreviewRow {
     row: Row,
     status: &'static str,
     candidates: Vec<Candidate>,
+    description_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -71,6 +78,7 @@ pub struct Preview {
 
 #[derive(FromRow)]
 struct Evidence {
+    external_id: String,
     date: String,
     description: String,
     amount_cents: i64,
@@ -115,19 +123,27 @@ async fn classify(
         let fields = (row.date.clone(), row.description.clone(), row.cents);
         let matches_identified_row = fields_with_ids.contains(&fields);
         let repeated_fields = !seen_fields.insert(fields);
-        let repeated_file: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM import_records WHERE user_id=? AND source_id=? AND file_hash=? AND record_number=?)")
-            .bind(user).bind(&input.source_id).bind(hash).bind(row.record as i64).fetch_one(&mut *conn).await?;
+        let repeated_file = sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND file_hash=? AND record_number=?")
+            .bind(user).bind(&input.source_id).bind(hash).bind(row.record as i64).fetch_optional(&mut *conn).await?;
         if row.error.is_some() {
             status = "invalid";
-        } else if repeated_file {
-            status = "known";
+        } else if let Some(original) = repeated_file {
+            status = if original.date == row.date
+                && original.description == row.description
+                && original.amount_cents == row.cents
+                && original.external_id == row.external_id
+            {
+                "known"
+            } else {
+                "conflict"
+            };
         } else if repeated_id {
             status = "conflict";
         } else {
             let evidence = if row.external_id.is_empty() {
                 None
             } else {
-                sqlx::query_as::<_, Evidence>("SELECT date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND external_id=? AND disposition='accepted' LIMIT 1")
+                sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND external_id=? AND disposition='accepted' LIMIT 1")
                     .bind(user).bind(&input.source_id).bind(&row.external_id).fetch_optional(&mut *conn).await?
             };
             if let Some(original) = evidence {
@@ -160,7 +176,11 @@ async fn classify(
                 }
             }
         }
+        let description_error = crate::domain::text(&row.description, "Description", 200)
+            .err()
+            .map(|e| e.1);
         result.push(PreviewRow {
+            description_error,
             row,
             status,
             candidates,
@@ -169,15 +189,56 @@ async fn classify(
     Ok(Preview { rows: result })
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SampleInput {
+    csv: String,
+    delimiter: String,
+}
+pub async fn sample(
+    State(state): State<AppState>,
+    session: Session,
+    Json(input): Json<SampleInput>,
+) -> Result<Json<parse::Sample>> {
+    auth::user(&session, &state.pool).await?;
+    Ok(Json(parse::sample(&input.csv, &input.delimiter)?))
+}
+async fn interpretation(
+    conn: &mut SqliteConnection,
+    user: &str,
+    input: &Input,
+    commit: bool,
+) -> Result<Option<profiles::Layout>> {
+    match (&input.profile_id, &input.layout) {
+        (Some(id), None) => Ok(Some(
+            profiles::resolve(conn, user, id, input.profile_revision).await?,
+        )),
+        (None, Some(layout)) if !commit => {
+            layout.validate()?;
+            Ok(Some(layout.clone()))
+        }
+        (None, None) if input.profile_revision.is_none() => Ok(None),
+        _ => Err(AppError::invalid(
+            "Use a saved profile and its preview revision before committing.",
+        )),
+    }
+}
+fn interpret(input: &Input, layout: Option<&profiles::Layout>) -> Result<Vec<Row>> {
+    match layout {
+        Some(layout) => parse::mapped(&input.csv, layout),
+        None => parse::parse(&input.csv),
+    }
+}
 pub async fn preview(
     State(state): State<AppState>,
     session: Session,
     Json(input): Json<Input>,
 ) -> Result<Json<Preview>> {
     let user = auth::user(&session, &state.pool).await?;
-    let rows = parse::parse(&input.csv)?;
     let hash = format!("{:x}", Sha256::digest(input.csv.as_bytes()));
     let mut tx = state.pool.begin().await?;
+    let layout = interpretation(&mut tx, &user.id, &input, false).await?;
+    let rows = interpret(&input, layout.as_ref())?;
     Ok(Json(
         classify(&mut tx, &user.id, &input, &hash, rows).await?,
     ))
@@ -201,7 +262,15 @@ pub async fn commit(
     Json(input): Json<Input>,
 ) -> Result<Json<Outcome>> {
     let user = auth::user(&session, &state.pool).await?;
-    let rows = parse::parse(&input.csv)?;
+    // Resolve and pin the profile under the same lock as duplicate validation and writes.
+    let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
+    let layout = interpretation(&mut tx, &user.id, &input, true).await?;
+    let snapshot = layout
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(AppError::internal)?;
+    let rows = interpret(&input, layout.as_ref())?;
     let hash = format!("{:x}", Sha256::digest(input.csv.as_bytes()));
     let mut decisions = HashMap::new();
     for decision in &input.decisions {
@@ -226,8 +295,16 @@ pub async fn commit(
             "Select valid CSV record numbers and decide only selected rows.",
         ));
     }
-    // Serialize both duplicate validation and writes, including simultaneous submits.
-    let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
+    for (record, description) in &input.descriptions {
+        if !rows.iter().any(|r| r.record == *record)
+            || selected.as_ref().is_some_and(|ids| !ids.contains(record))
+        {
+            return Err(AppError::invalid(
+                "Provide descriptions only for selected CSV records.",
+            ));
+        }
+        crate::domain::text(description, "Description", 200)?;
+    }
     let preview = classify(&mut tx, &user.id, &input, &hash, rows).await?;
     let mut outcome = Outcome {
         added: 0,
@@ -247,8 +324,8 @@ pub async fn commit(
         .filter(|r| r.row.error.is_none())
         .map(|r| r.row.date.as_str())
         .collect();
-    sqlx::query("INSERT INTO import_batches(id,user_id,source_id,filename,start_date,end_date) VALUES(?,?,?,?,?,?)")
-        .bind(&batch).bind(&user.id).bind(&input.source_id).bind(filename).bind(dates.iter().min().copied()).bind(dates.iter().max().copied()).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO import_batches(id,user_id,source_id,filename,start_date,end_date,interpretation) VALUES(?,?,?,?,?,?,?)")
+        .bind(&batch).bind(&user.id).bind(&input.source_id).bind(filename).bind(dates.iter().min().copied()).bind(dates.iter().max().copied()).bind(&snapshot).execute(&mut *tx).await?;
     let mut income = Vec::new();
     let mut spending = Vec::new();
     for item in preview.rows {
@@ -269,7 +346,7 @@ pub async fn commit(
         }
         if item.status == "known" {
             // Preserve another file's provenance without changing its linked entry.
-            let evidence = sqlx::query_as::<_, Evidence>("SELECT date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND external_id=? AND external_id<>'' AND disposition='accepted' LIMIT 1")
+            let evidence = sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND external_id=? AND external_id<>'' AND disposition='accepted' LIMIT 1")
                 .bind(&user.id).bind(&input.source_id).bind(&row.external_id).fetch_optional(&mut *tx).await?;
             if let Some(evidence) = evidence {
                 record(
@@ -280,6 +357,7 @@ pub async fn commit(
                     &row,
                     evidence.transaction_id.as_deref(),
                     "accepted",
+                    snapshot.as_deref(),
                 )
                 .await?;
             }
@@ -294,7 +372,7 @@ pub async fn commit(
         let action = decisions.get(&row.record).copied();
         if item.status == "conflict" && !matches!(action, Some(Decision::Skip { .. })) {
             return Err(AppError::invalid(format!(
-                "Record {} has a conflicting external ID. Skip it explicitly or correct the CSV.",
+                "Record {} conflicts with original import evidence or repeats an external ID. Check the mapping or correct the CSV; skip it explicitly to leave it out.",
                 row.record
             )));
         }
@@ -320,9 +398,17 @@ pub async fn commit(
                 (Some(transaction_id.clone()), "accepted")
             }
             Some(Decision::Keep { .. }) | None => {
+                let description = crate::domain::text(
+                    input
+                        .descriptions
+                        .get(&row.record)
+                        .unwrap_or(&row.description),
+                    "Description",
+                    200,
+                )?;
                 let id = Uuid::new_v4().to_string();
                 sqlx::query("INSERT INTO transactions(id,user_id,source_id,date,description,amount_cents,origin) VALUES(?,?,?,?,?,?,'csv')")
-                    .bind(&id).bind(&user.id).bind(&input.source_id).bind(&row.date).bind(&row.description).bind(row.cents).execute(&mut *tx).await?;
+                    .bind(&id).bind(&user.id).bind(&input.source_id).bind(&row.date).bind(description).bind(row.cents).execute(&mut *tx).await?;
                 history::link(&mut tx, &batch, &user.id, &id, "added").await?;
                 outcome.added += 1;
                 if row.cents > 0 {
@@ -349,6 +435,7 @@ pub async fn commit(
             &row,
             id.as_deref(),
             disposition,
+            snapshot.as_deref(),
         )
         .await?;
     }
@@ -369,6 +456,7 @@ pub async fn commit(
     Ok(Json(outcome))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn record(
     conn: &mut SqliteConnection,
     user: &str,
@@ -377,8 +465,9 @@ async fn record(
     row: &Row,
     id: Option<&str>,
     disposition: &str,
+    interpretation: Option<&str>,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO import_records(user_id,source_id,file_hash,record_number,external_id,date,description,amount_cents,transaction_id,disposition) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,source_id,file_hash,record_number) DO NOTHING")
-        .bind(user).bind(source).bind(hash).bind(row.record as i64).bind(&row.external_id).bind(&row.date).bind(&row.description).bind(row.cents).bind(id).bind(disposition).execute(conn).await?;
+    sqlx::query("INSERT INTO import_records(user_id,source_id,file_hash,record_number,external_id,date,description,amount_cents,transaction_id,disposition,interpretation) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,source_id,file_hash,record_number) DO NOTHING")
+        .bind(user).bind(source).bind(hash).bind(row.record as i64).bind(&row.external_id).bind(&row.date).bind(&row.description).bind(row.cents).bind(id).bind(disposition).bind(interpretation).execute(conn).await?;
     Ok(())
 }

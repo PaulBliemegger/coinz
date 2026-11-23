@@ -97,6 +97,11 @@ scaffolding directories, generic utility collections, and required layers.
   idempotent. Original file/record and source-scoped bank evidence live separately
   from mutable transactions (migration 0004); raw uploads are not persisted.
   Deletion clears linked evidence and permits reimport (migration 0006).
+  Owned reusable layouts and revisions (migration 0008) pin profile interpretation
+  at preview/commit. Commit checks the revision under the write lock and stores an
+  immutable layout snapshot on the batch and original row evidence. Description
+  drafts affect new transactions only; original parsed fields continue to drive
+  matching. Same-file reinterpretations that change original fields conflict.
   Batch counts/member roles and transaction revisions (migration 0007) support
   removal with a review fingerprint rechecked under the write lock. Existing
   `added` versus `known`/`matched` roles express one creating batch without an

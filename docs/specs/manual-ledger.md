@@ -157,7 +157,8 @@ from `/session`.
 Success is 200 for reads/login, 201 for source/entry creation, and 204 for
 entry updates, logout, and deletions (including bulk deletion). Domain errors use
 `{"error":"message"}`: 401 authentication, 403 CSRF/origin, 404 missing/inaccessible
-records, and 422 validation. Framework JSON/body-size rejections can have another
+records, and 422 validation. Origin errors name the configured app address;
+token errors ask for a refresh. Framework JSON/body-size rejections can have another
 shape, which the UI handles generically.
 
 ## Preserved legacy data

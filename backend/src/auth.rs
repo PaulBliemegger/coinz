@@ -180,11 +180,19 @@ pub async fn csrf(
             .headers()
             .get("origin")
             .is_none_or(|value| value.to_str().is_ok_and(|origin| origin == state.origin));
-        if !origin_ok
-            || expected
-                .as_deref()
-                .zip(supplied)
-                .is_none_or(|(a, b)| a != b)
+        if !origin_ok {
+            return Err(AppError(
+                StatusCode::FORBIDDEN,
+                format!(
+                    "This address does not match the configured app address. Open {} and try again.",
+                    state.origin
+                ),
+            ));
+        }
+        if expected
+            .as_deref()
+            .zip(supplied)
+            .is_none_or(|(a, b)| a != b)
         {
             return Err(AppError(
                 StatusCode::FORBIDDEN,

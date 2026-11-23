@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { api, type Source, type ImportRow, type ImportOutcome } from '#lib/api.ts';
+  import {
+    api,
+    type Source,
+    type ImportRow,
+    type ImportOutcome,
+    type ImportProfile,
+    type CsvSample,
+  } from '#lib/api.ts';
   import { money } from '#lib/money.ts';
+  import ImportMapping from './ImportMapping.svelte';
   import ImportReviewRow from './ImportReviewRow.svelte';
   import { importSelection } from './selection.ts';
 
@@ -26,26 +34,102 @@
   let csv = $state('');
   let rows = $state<ImportRow[] | null>(null);
   let decisions = $state<Record<number, string>>({});
+  let profiles = $state<ImportProfile[]>([]);
+  let profileId = $state('');
+  let mapping = $state(false);
+  let descriptions = $state<Record<number, string>>({});
+  let discardedDescriptions = $state<Record<number, string>>({});
+  let discard = $state<'mapping' | 'file' | null>(null);
+  let loadingProfiles = $state(true);
+  let checkingFile = $state(false);
+  let compatible = $state(false);
+  let compatibilityError = $state('');
+  let compatibilityRequest = 0;
+  const profile = $derived(profiles.find((p) => p.id === profileId) ?? null);
+  const displayRows = $derived(
+    (rows ?? []).map((row) => ({
+      ...row,
+      description: descriptions[row.record] ?? row.description,
+      description_error:
+        descriptions[row.record] ||
+        row.status === 'known' ||
+        decisions[row.record]?.startsWith('match:')
+          ? null
+          : row.description_error,
+    })),
+  );
   let busy = $state(false);
   let error = $state('');
   let selected = $state<number[]>([]);
-  const selection = $derived(importSelection(rows ?? [], selected, decisions));
+  let editingRecords = $state<number[]>([]);
+  function setEditing(record: number, editing: boolean) {
+    editingRecords = editing
+      ? [...new Set([...editingRecords, record])]
+      : editingRecords.filter((id) => id !== record);
+  }
+  const selection = $derived(importSelection(displayRows, selected, decisions));
   const attention = $derived(
-    (rows ?? []).filter(
+    displayRows.filter(
       (row) =>
         ['invalid', 'conflict'].includes(row.status) ||
+        !!row.description_error ||
         (row.status === 'review' && !decisions[row.record]),
     ),
   );
   const readyRows = $derived(
-    (rows ?? []).filter(
-      (row) => row.status === 'new' || (row.status === 'review' && !!decisions[row.record]),
+    displayRows.filter(
+      (row) =>
+        !row.description_error &&
+        (row.status === 'new' || (row.status === 'review' && !!decisions[row.record])),
     ),
   );
-  const knownRows = $derived((rows ?? []).filter((row) => row.status === 'known'));
+  const knownRows = $derived(displayRows.filter((row) => row.status === 'known'));
   const eligible = $derived(
     readyRows.filter((row) => row.status === 'new' || decisions[row.record] === 'keep'),
   );
+  $effect(() => {
+    const chosen = profile;
+    const selectedFile = file;
+    const request = ++compatibilityRequest;
+    compatible = false;
+    compatibilityError = '';
+    if (chosen && selectedFile) void checkFile(selectedFile, chosen, request);
+    else checkingFile = false;
+    return () => {
+      compatibilityRequest++;
+    };
+  });
+  async function checkFile(selectedFile: File, chosen: ImportProfile, request: number) {
+    checkingFile = true;
+    try {
+      if (selectedFile.size > 256 * 1024) throw new Error('CSV files must be at most 256 KiB.');
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(
+        await selectedFile.arrayBuffer(),
+      );
+      const sample = await api<CsvSample>('/imports/sample', 'POST', {
+        csv: text,
+        delimiter: chosen.layout.delimiter,
+      });
+      if (request !== compatibilityRequest) return;
+      const headers = [
+        chosen.layout.date,
+        chosen.layout.amount,
+        chosen.layout.description,
+        chosen.layout.external_id,
+      ].filter(Boolean);
+      if (headers.some((header) => sample.headers.filter((value) => value === header).length !== 1))
+        throw new Error(
+          'A mapped column is missing or ambiguous. Check column mapping before review.',
+        );
+      compatible = true;
+    } catch (cause) {
+      if (request === compatibilityRequest)
+        compatibilityError =
+          cause instanceof Error ? cause.message : 'Could not check file headers.';
+    } finally {
+      if (request === compatibilityRequest) checkingFile = false;
+    }
+  }
   function select(record: number, checked: boolean) {
     selected = checked
       ? [...new Set([...selected, record])]
@@ -53,14 +137,69 @@
   }
   function decide(record: number, choice: string) {
     decisions = { ...decisions, [record]: choice };
+    if (choice.startsWith('match:') && descriptions[record] !== undefined) {
+      discardedDescriptions = { ...discardedDescriptions, [record]: descriptions[record] };
+      const remaining = { ...descriptions };
+      delete remaining[record];
+      descriptions = remaining;
+    }
     select(record, choice === 'keep');
   }
   onMount(() => {
     choices = [...sources];
     sourceId = initialSource;
     dialog.showModal();
+    void loadProfiles();
   });
 
+  async function loadProfiles() {
+    error = '';
+    loadingProfiles = true;
+    try {
+      profiles = await api<ImportProfile[]>('/imports/profiles');
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      loadingProfiles = false;
+    }
+  }
+  async function editDescription(record: number, value: string) {
+    descriptions = { ...descriptions, [record]: value.trim() };
+    await tick();
+    document.getElementById(`import-description-${record}`)?.focus();
+  }
+  async function review(chosen: ImportProfile) {
+    const result = await api<{ rows: ImportRow[] }>('/imports/preview', 'POST', {
+      source_id: sourceId,
+      csv,
+      profile_id: chosen.id,
+      profile_revision: chosen.revision,
+    });
+    rows = result.rows;
+    descriptions = {};
+    discardedDescriptions = {};
+    decisions = {};
+    discard = null;
+    mapping = false;
+    selected = result.rows
+      .filter((row) => row.status === 'new' && !row.description_error)
+      .map((row) => row.record);
+    await tick();
+    previewHeading?.focus();
+  }
+  function leaveReview(target: 'mapping' | 'file') {
+    discard = target;
+  }
+  function resetReview(target: 'mapping' | 'file') {
+    rows = null;
+    descriptions = {};
+    discardedDescriptions = {};
+    decisions = {};
+    selected = [];
+    discard = null;
+    error = '';
+    mapping = target === 'mapping';
+  }
   function fail(cause: unknown) {
     error = cause instanceof Error ? cause.message : 'Could not import this file.';
   }
@@ -90,20 +229,15 @@
     if (!file) return;
     error = '';
     busy = true;
+    csv = '';
     try {
       if (file.size > 256 * 1024) throw new Error('CSV files must be at most 256 KiB.');
       csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
-      const result = await api<{ rows: ImportRow[] }>('/imports/preview', 'POST', {
-        source_id: sourceId,
-        csv,
-      });
-      rows = result.rows;
-      decisions = {};
-      selected = result.rows.filter((row) => row.status === 'new').map((row) => row.record);
-      await tick();
-      previewHeading?.focus();
+      if (profile) await review(profile);
+      else mapping = true;
     } catch (cause) {
       fail(cause);
+      if (csv && profile) mapping = true;
     } finally {
       busy = false;
     }
@@ -117,6 +251,13 @@
         source_id: sourceId,
         csv,
         filename: file?.name,
+        profile_id: profile?.id,
+        profile_revision: profile?.revision,
+        descriptions: Object.fromEntries(
+          selection.additions
+            .filter((row) => descriptions[row.record] !== undefined)
+            .map((row) => [row.record, descriptions[row.record]]),
+        ),
         selected_records: selection.records,
         decisions: selection.decisions,
       });
@@ -135,6 +276,7 @@
   bind:this={dialog}
   aria-labelledby="import-title"
   class="import-dialog"
+  class:mapping-workspace={mapping}
   oncancel={(event) => {
     if (busy) event.preventDefault();
   }}
@@ -156,12 +298,28 @@
     </button>
   </div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {#if !rows}
-    <p>Start with the example format. Your bank's CSV will need its own adapter.</p>
-    <p class="muted">
-      Headers: <code>date,description,amount,external_id</code>. Dates: YYYY-MM-DD; EUR amounts:
-      -12.34 for spending, 12.34 for income. External IDs may be blank.
-    </p>
+  <ol class="stages" aria-label="Import stages">
+    <li aria-current={!mapping && !rows ? 'step' : undefined}>File & profile</li>
+    <li aria-current={mapping ? 'step' : undefined}>Map columns</li>
+    <li aria-current={rows ? 'step' : undefined}>Review entries</li>
+  </ol>
+  {#if mapping}
+    <div class="review-scroll">
+      <p class="muted">{file?.name} · {choices.find((source) => source.id === sourceId)?.name}</p>
+      <ImportMapping
+        {csv}
+        {sourceId}
+        {profile}
+        onback={() => (mapping = false)}
+        onsaved={async (saved) => {
+          profiles = [...profiles.filter((p) => p.id !== saved.id), saved];
+          profileId = saved.id;
+          await review(saved);
+        }}
+      />
+    </div>
+  {:else if !rows}
+    <p>Choose a reusable layout, or map your CSV columns to Date, Amount, and Description.</p>
     {#if newSource}
       <form onsubmit={createSource}>
         <label>
@@ -201,20 +359,84 @@
           CSV file<input
             type="file"
             accept=".csv,text/csv"
-            required
+            required={!file}
             disabled={busy}
             onchange={(event) => {
               file = event.currentTarget.files?.[0] ?? null;
+              csv = '';
               error = '';
             }}
           />
         </label>
+        {#if file}<p class="muted">Selected file: {file.name}</p>{/if}
         <p class="muted">
           Up to 256 KiB and 1,000 records. Preview first; nothing is added until you confirm.
           Sources hold no bank balance.
         </p>
-        <button class="button primary" disabled={busy || !sourceId || !file}>
-          {busy ? 'Reading…' : 'Preview CSV'}
+        <label>
+          Import profile<select bind:value={profileId} disabled={busy || loadingProfiles}>
+            <option value="">Create a new profile</option>
+            {#each profiles as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
+          </select>
+        </label>
+        {#if loadingProfiles}<p role="status">Loading profiles…</p>{/if}
+        <button
+          type="button"
+          class="button quiet"
+          disabled={busy || loadingProfiles}
+          onclick={loadProfiles}
+        >
+          Reload profiles
+        </button>
+        {#if profile}<p class="muted">
+            Date: {profile.layout.date} · Amount: {profile.layout.amount} · Description: {profile
+              .layout.description}
+          </p>
+          <button
+            type="button"
+            class="button quiet"
+            disabled={busy || !sourceId || !file}
+            onclick={async () => {
+              busy = true;
+              error = '';
+              try {
+                if (!file || file.size > 256 * 1024)
+                  throw new Error('CSV files must be at most 256 KiB.');
+                csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+                mapping = true;
+              } catch (cause) {
+                fail(cause);
+              } finally {
+                busy = false;
+              }
+            }}
+          >
+            Check column mapping
+          </button>
+          <button
+            type="button"
+            class="button quiet"
+            disabled={busy}
+            onclick={() => (profileId = '')}
+          >
+            Create a new profile
+          </button>
+        {/if}
+        {#if compatibilityError}<p class="error" role="alert">{compatibilityError}</p>{/if}
+        <p class="muted">
+          Saved mappings are checked against this file before review. Saved profiles and sources
+          remain if you cancel.
+        </p>
+        <button
+          class="button primary"
+          disabled={busy ||
+            loadingProfiles ||
+            checkingFile ||
+            (profile !== null && !compatible) ||
+            !sourceId ||
+            !file}
+        >
+          {busy || checkingFile ? 'Reading…' : profile ? 'Review entries' : 'Map columns'}
         </button>
       </form>
     {/if}
@@ -225,6 +447,10 @@
       {#if attention.length}<h3 class="group-heading">Needs attention · {attention.length}</h3>
         {#each attention as row (row.record)}<ImportReviewRow
             {row}
+            draft={descriptions[row.record]}
+            discardedDraft={discardedDescriptions[row.record]}
+            ondescription={(value) => editDescription(row.record, value)}
+            onediting={(editing) => setEditing(row.record, editing)}
             selected={false}
             choice={decisions[row.record] ?? ''}
             {busy}
@@ -249,6 +475,10 @@
       </div>
       {#each readyRows as row (row.record)}<ImportReviewRow
           {row}
+          draft={descriptions[row.record]}
+          discardedDraft={discardedDescriptions[row.record]}
+          ondescription={(value) => editDescription(row.record, value)}
+          onediting={(editing) => setEditing(row.record, editing)}
           selected={selected.includes(row.record)}
           choice={decisions[row.record] ?? ''}
           {busy}
@@ -263,6 +493,10 @@
             {knownRows.length} already imported · excluded
           </summary>{#each knownRows as row (row.record)}<ImportReviewRow
               {row}
+              draft={descriptions[row.record]}
+              discardedDraft={discardedDescriptions[row.record]}
+              ondescription={(value) => editDescription(row.record, value)}
+              onediting={(editing) => setEditing(row.record, editing)}
               selected={false}
               choice=""
               {busy}
@@ -272,6 +506,35 @@
         </details>{/if}
     </div>
     <div class="import-bottom">
+      {#if discard}<div role="alert">
+          <p>
+            Changing {discard === 'mapping' ? 'the mapping' : 'the file'} clears draft descriptions, selections,
+            and duplicate decisions.
+          </p>
+          <div class="import-actions">
+            <button type="button" class="button" disabled={busy} onclick={() => (discard = null)}>
+              Keep reviewing
+            </button><button
+              type="button"
+              class="button"
+              disabled={busy}
+              onclick={() => resetReview(discard!)}
+            >
+              Continue changing {discard}
+            </button>
+          </div>
+        </div>{/if}
+      <button
+        type="button"
+        class="button quiet"
+        disabled={busy}
+        onclick={() => leaveReview('mapping')}
+      >
+        Check column mapping
+      </button>
+      {#if editingRecords.length}<p role="status">
+          Finish or cancel pending description changes before importing.
+        </p>{/if}
       <div class="selected-totals">
         <div>
           <span class="muted">Selected income</span><strong>{money(selection.income)}</strong>
@@ -290,15 +553,17 @@
           class="button"
           disabled={busy}
           onclick={() => {
-            rows = null;
-            error = '';
+            leaveReview('file');
           }}
         >
           Choose file again
         </button><button
           type="button"
           class="button primary"
-          disabled={busy || !selection.records.length}
+          disabled={busy ||
+            discard !== null ||
+            editingRecords.length > 0 ||
+            !selection.records.length}
           onclick={commit}
         >
           {busy
@@ -314,6 +579,9 @@
   .import-dialog {
     width: min(780px, calc(100% - 2rem));
   }
+  .import-dialog.mapping-workspace {
+    width: min(1180px, calc(100% - 2rem));
+  }
   .import-dialog[open] {
     display: flex;
     flex-direction: column;
@@ -322,6 +590,17 @@
   }
   .import-dialog > :global(form) {
     overflow-y: auto;
+  }
+  .stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    padding-left: 1.25rem;
+    font-size: 0.875rem;
+  }
+  .stages [aria-current='step'] {
+    font-weight: 700;
+    color: var(--accent);
   }
   .review-scroll {
     overflow-y: auto;
@@ -373,9 +652,6 @@
   }
   summary {
     min-height: 44px;
-  }
-  code {
-    overflow-wrap: anywhere;
   }
   .import-actions {
     display: flex;
