@@ -49,7 +49,7 @@ picker, filters, and pagination.
 
 The approved [Guided selection design](specs/import-profiles.md#approved-interaction-design)
 extends import setup with table-header mapping and description editing in review.
-It is proposed, not implemented. The spec records the interaction so future work
+It is implemented; browser/visual verification remains blocked. The spec records the interaction so future work
 does not depend on a chat-only prototype.
 
 ## Small view preferences

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Locator } from '@playwright/test';
 
 async function login(page: Page, username: string) {
   await page.goto('/');
@@ -39,6 +39,34 @@ async function add(
   await dialog.getByRole('button', { name: 'Record transaction', exact: true }).click();
   await expect(dialog).not.toBeVisible();
 }
+async function reviewExample(dialog: Locator) {
+  const picker = dialog.getByLabel('Import profile', { exact: true });
+  await expect(picker).toBeEnabled();
+  if (
+    await picker
+      .locator('option')
+      .filter({ hasText: /^Browser example$/ })
+      .count()
+  ) {
+    await picker.selectOption({ label: 'Browser example' });
+    await dialog.getByRole('button', { name: 'Review entries', exact: true }).click();
+  } else {
+    await picker.selectOption('');
+    await dialog.getByRole('button', { name: 'Map columns', exact: true }).click();
+    for (const field of ['date', 'amount', 'description']) {
+      await dialog
+        .getByRole('columnheader')
+        .filter({ hasText: new RegExp(`^${field}\\b`) })
+        .getByRole('button')
+        .click();
+    }
+    await dialog.getByLabel('External transaction ID (optional)').selectOption('external_id');
+    await dialog.getByLabel('Profile name', { exact: true }).fill('Browser example');
+    await dialog.getByRole('button', { name: 'Save profile & review', exact: true }).click();
+  }
+  await expect(dialog.getByRole('heading', { name: /^Review \d+ entries$/ })).toBeVisible();
+}
+
 async function importFile(page: Page, name: string, csv: string, sourceName: string) {
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import CSV' });
@@ -48,7 +76,7 @@ async function importFile(page: Page, name: string, csv: string, sourceName: str
   await dialog
     .getByLabel('CSV file')
     .setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from(csv) });
-  await dialog.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await reviewExample(dialog);
   return dialog;
 }
 
@@ -226,7 +254,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await expect(importRow.locator('.selection-circle')).toHaveText('−');
   await importRow.locator('summary').click();
   await expect(include).toBeChecked();
-  await importRow.getByRole('heading', { name: 'Demo purchase 00', exact: true }).click();
+  await importRow.locator('.row-main .muted').click();
   await expect(include).not.toBeChecked();
   await expect(importRow).not.toHaveClass(/\bselected\b/);
   await include.focus();
@@ -317,7 +345,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await dialog
     .getByLabel('CSV file')
     .setInputFiles({ name: filename, mimeType: 'text/csv', buffer: Buffer.from(csv) });
-  await dialog.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await reviewExample(dialog);
   await expect(
     dialog.getByRole('button', { name: 'Import 32 entries', exact: true }),
   ).toBeEnabled();
@@ -331,7 +359,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await dialog
     .getByLabel('CSV file')
     .setInputFiles({ name: filename, mimeType: 'text/csv', buffer: Buffer.from(csv) });
-  await dialog.getByRole('button', { name: 'Preview CSV', exact: true }).click();
+  await reviewExample(dialog);
   await expect(
     dialog.getByRole('button', { name: 'Import 31 entries', exact: true }),
   ).toBeEnabled();
@@ -532,4 +560,194 @@ test('saving an entry outside its search results focuses the workspace heading',
   await page.getByLabel('Description', { exact: true }).fill('Renamed fixture');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Entries workspace', exact: true })).toBeFocused();
+});
+
+test('guided profile mapping, draft descriptions, reuse and original evidence', async ({
+  page,
+}, info) => {
+  await login(page, `${info.project.name}-user`);
+  await clean(page);
+  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByRole('button', { name: '+ New source', exact: true }).click();
+  const source = `Profile stream ${info.project.name}`;
+  await dialog.getByLabel('New source name').fill(source);
+  await dialog.getByRole('button', { name: 'Create import source', exact: true }).click();
+  const csv =
+    'Booking date;Value;Counterparty;ID\n03.11.2026;-1.234,56;Example Cafe;a\n04.11.2026;2,01;;b\n';
+  const upload = { name: 'synthetic-profile.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) };
+  await dialog.getByLabel('CSV file').setInputFiles(upload);
+  await expect(dialog.getByLabel('Import profile', { exact: true })).toBeEnabled();
+  await dialog.getByRole('button', { name: 'Map columns', exact: true }).click();
+  await dialog.getByText('Reading the values', { exact: true }).click();
+  await dialog.getByLabel('Delimiter', { exact: true }).selectOption(';');
+  await dialog.getByLabel('Date format', { exact: true }).selectOption('DD.MM.YYYY');
+  await dialog.getByLabel('Decimal separator', { exact: true }).selectOption(',');
+  await dialog.getByLabel('Grouping separator', { exact: true }).selectOption('.');
+  for (const header of ['Booking date', 'Value', 'Counterparty']) {
+    const button = dialog.getByRole('columnheader').filter({ hasText: header }).getByRole('button');
+    await button.focus();
+    await page.keyboard.press('Enter');
+  }
+  await expect(dialog.getByText(/All three fields mapped/)).toBeVisible();
+  await dialog.getByLabel('External transaction ID (optional)').selectOption('ID');
+  const profileName = `Guided profile ${info.project.name}`;
+  await dialog.getByLabel('Profile name', { exact: true }).fill(profileName);
+  await expect(
+    dialog.getByRole('button', { name: 'Save profile & review', exact: true }),
+  ).toBeEnabled();
+  await expect(dialog.locator('table')).toContainText('-1.234,56');
+  await page.screenshot({ path: info.outputPath('profile-mapping-light.png'), fullPage: true });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  // System appearance follows the OS; an earlier journey may have saved an explicit preference.
+  await page.evaluate(() => {
+    document.documentElement.dataset.appearance = 'dark';
+  });
+  await page.screenshot({ path: info.outputPath('profile-mapping-dark.png'), fullPage: true });
+  await dialog.getByRole('button', { name: 'Save profile & review', exact: true }).click();
+  await expect(
+    dialog.getByRole('heading', { name: 'Review 2 entries', exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole('button', { name: 'Add description', exact: true }).click();
+  await dialog.getByLabel('Description', { exact: true }).fill('Draft to cancel');
+  await expect(
+    dialog.getByRole('button', { name: 'Import 1 entries', exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Add description', exact: true }).click();
+  await dialog.getByLabel('Description', { exact: true }).fill('Synthetic reimbursement');
+  await dialog.getByRole('button', { name: 'Save description', exact: true }).click();
+  await dialog
+    .getByRole('checkbox', { name: 'Include Synthetic reimbursement', exact: true })
+    .check();
+  await dialog.getByRole('button', { name: 'Example Cafe', exact: true }).click();
+  await dialog.getByLabel('Description', { exact: true }).fill('Lunch with Sam');
+  await dialog.getByRole('button', { name: 'Save description', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Check column mapping', exact: true }).click();
+  await expect(dialog.getByText(/clears draft descriptions/)).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Import 2 entries', exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Keep reviewing', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Lunch with Sam', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Import 2 entries', exact: true })).toBeEnabled();
+  await page.screenshot({ path: info.outputPath('profile-review-dark.png'), fullPage: true });
+  await dialog.getByRole('button', { name: 'Import 2 entries', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByLabel('Import source', { exact: true }).selectOption({ label: source });
+  await dialog.getByLabel('CSV file').setInputFiles(upload);
+  await expect(dialog.getByLabel('Import profile', { exact: true })).toBeEnabled();
+  await dialog.getByLabel('Import profile', { exact: true }).selectOption({ label: profileName });
+  await dialog.getByRole('button', { name: 'Review entries', exact: true }).click();
+  await expect(dialog.getByText('2 already imported · excluded', { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Import 0 entries', exact: true }),
+  ).toBeDisabled();
+  await expect(dialog.getByRole('heading', { name: 'Map columns', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close import', exact: true }).click();
+});
+
+test('Imports manages profile column names without uploading or changing history', async ({
+  page,
+}, info) => {
+  await login(page, `${info.project.name}-user`);
+  await clean(page);
+  await page.getByRole('link', { name: 'Imports', exact: true }).click();
+  const profiles = page.locator('details.profiles');
+  await profiles.locator('summary').click();
+  await expect(
+    profiles.getByRole('button', { name: 'Reload profiles', exact: true }),
+  ).toBeEnabled();
+  const historyBefore = await (await page.request.get('/api/imports/history')).json();
+  await profiles.getByRole('button', { name: 'New profile', exact: true }).click();
+  const name = `Managed layout ${info.project.name}`;
+  await profiles.getByLabel('Profile name', { exact: true }).fill(name);
+  await profiles.getByLabel('Date column', { exact: true }).fill('Booking date');
+  await profiles.getByLabel('Amount column', { exact: true }).fill('Value');
+  await profiles.getByLabel('Description column', { exact: true }).fill('Counterparty');
+  await profiles.getByLabel('External ID column (optional)').fill('ID');
+  await profiles.getByLabel('Delimiter', { exact: true }).selectOption(';');
+  await profiles.getByLabel('Date format', { exact: true }).selectOption('DD.MM.YYYY');
+  await profiles.getByLabel('Decimal separator', { exact: true }).selectOption(',');
+  await profiles.getByLabel('Grouping separator', { exact: true }).selectOption('.');
+  await profiles.getByRole('button', { name: 'Create profile', exact: true }).click();
+  await expect(profiles.getByRole('status')).toContainText('Profile saved');
+  let catalog = await (await page.request.get('/api/imports/profiles')).json();
+  const original = catalog.find((p: { name: string }) => p.name === name);
+  expect(original.layout.description).toBe('Counterparty');
+  await profiles.getByRole('button', { name: `Edit profile ${name}`, exact: true }).click();
+  await profiles.getByLabel('Description column', { exact: true }).fill('Cancelled draft');
+  await page.keyboard.press('Escape');
+  await expect(
+    profiles.getByRole('button', { name: `Edit profile ${name}`, exact: true }),
+  ).toBeFocused();
+  await profiles.getByRole('button', { name: `Edit profile ${name}`, exact: true }).click();
+  await expect(profiles.getByLabel('Description column', { exact: true })).toHaveValue(
+    'Counterparty',
+  );
+  await profiles.getByLabel('Profile name', { exact: true }).fill(`${name} updated`);
+  await profiles.getByLabel('Description column', { exact: true }).fill('Reference');
+  await page.screenshot({ path: info.outputPath('profile-editor-light.png'), fullPage: true });
+  await page.evaluate(() => {
+    document.documentElement.dataset.appearance = 'dark';
+  });
+  await page.screenshot({ path: info.outputPath('profile-editor-dark.png'), fullPage: true });
+  await profiles.getByRole('button', { name: 'Save profile changes', exact: true }).click();
+  await expect(profiles.getByRole('status')).toContainText('Profile saved');
+  catalog = await (await page.request.get('/api/imports/profiles')).json();
+  const updated = catalog.find((p: { id: string }) => p.id === original.id);
+  expect(updated.name).toBe(`${name} updated`);
+  expect(updated.revision).toBe(original.revision + 1);
+  expect(updated.layout.description).toBe('Reference');
+  expect(await (await page.request.get('/api/imports/history')).json()).toEqual(historyBefore);
+  expect((await (await page.request.get('/api/entries')).json()).entries).toHaveLength(0);
+  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await expect(dialog.getByLabel('Import profile', { exact: true })).toBeEnabled();
+  await dialog
+    .getByLabel('Import profile', { exact: true })
+    .selectOption({ label: `${name} updated` });
+  await expect(dialog).toContainText('Description: Reference');
+  await dialog.getByRole('button', { name: 'Close import', exact: true }).click();
+});
+
+test('draft-to-match confirmation blocks final import until resolved', async ({ page }, info) => {
+  await login(page, `${info.project.name}-user`);
+  await clean(page);
+  await add(page, 'Match fixture', '1.23', '2026-11-03');
+  const dialog = await importFile(
+    page,
+    'draft-match.csv',
+    'date,description,amount,external_id\n2026-11-03,Match fixture,-1.23,\n',
+    `Draft matching ${info.project.name}`,
+  );
+  const row = dialog.locator('.review-row');
+  await row.locator('select').selectOption('keep');
+  await row.getByRole('button', { name: 'Match fixture', exact: true }).click();
+  await row.getByLabel('Description', { exact: true }).fill('Draft wording');
+  await row.getByRole('button', { name: 'Save description', exact: true }).click();
+  const matchValue = await row.locator('option[value^="match:"]').first().getAttribute('value');
+  expect(matchValue).toBeTruthy();
+  await row.locator('select').selectOption(matchValue!);
+  await expect(
+    row.getByRole('button', { name: 'Discard draft & match', exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Import 1 entries', exact: true }),
+  ).toBeDisabled();
+  await row.getByRole('button', { name: 'Keep draft', exact: true }).click();
+  await expect(row.getByRole('button', { name: 'Draft wording', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Import 1 entries', exact: true })).toBeEnabled();
+  await row.locator('select').selectOption(matchValue!);
+  await row.getByRole('button', { name: 'Discard draft & match', exact: true }).click();
+  await expect(row).toContainText('Draft “Draft wording” was discarded.');
+  await dialog.getByRole('button', { name: 'Import 0 entries + 1 matches', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const entries = (await (await page.request.get('/api/entries')).json()).entries;
+  expect(entries).toHaveLength(1);
+  expect(entries[0].description).toBe('Match fixture');
+  expect(entries[0].origin).toBe('manual');
 });

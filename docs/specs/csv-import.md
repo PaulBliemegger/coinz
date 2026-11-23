@@ -1,14 +1,16 @@
-# Example CSV import
+# CSV import and duplicate review
 
 Status: implemented; current verification limits are in the
 [README](../../README.md#verification-status). The checked-in examples are wholly synthetic,
 not N26 or Erste format samples. This extends the [manual ledger](manual-ledger.md)
-with a small working importer, not a configurable import framework.
+with preview, duplicate protection and atomic import.
+[Import profiles](import-profiles.md) define the implemented reusable mapping flow.
 
 ## First workflow
 
 1. Open Import CSV from Home, Entries, or Imports and choose or create a source.
-2. Select a CSV in the example format below.
+2. Select a CSV and choose or create a profile. Map the example columns below, or
+   use the explicit layout presets in the profile spec.
 3. Preview dated income/expenses, validation errors, and duplicate candidates.
 4. Select additions and explicitly match or keep any duplicates you want to include.
    Leave other rows for later, then import the selected subset.
@@ -43,8 +45,8 @@ Malformed structure or invalid required headers blocks preview; invalid data row
 show their record number in details and an actionable error. Invalid or unresolved
 selected rows block commit; unselected rows can be left for later. Limits are 256 KiB of UTF-8 CSV and 1,000 data records,
 shown in the upload flow. Import JSON requests are capped at 2 MiB to allow
-escaping; other API routes retain their 16 KiB limit. Headers must appear in the
-listed order. Dates, descriptions, amounts, and IDs are trimmed; external IDs
+escaping; other API routes retain their individual limits. For legacy API requests
+without a profile, headers must appear in the listed order. Profile-based imports resolve selected headers by name. Dates, descriptions, amounts, and IDs are trimmed; external IDs
 are limited to 200 characters. Record numbers begin at 2 after the header and
 count CSV records, including quoted multiline fields.
 
@@ -108,6 +110,9 @@ Neither endpoint stores the uploaded file itself. Commit stores a batch with
 counts, display filename and entry associations; see [import history](import-history.md). Preview writes no entries/provenance;
 creating a source is a separate explicit operation and survives cancellation.
 
+Profile IDs/revisions and review description overrides are described in the
+[profile API contract](import-profiles.md#persistence-and-api).
+
 Preview returns `{ rows }`, each with `record`, `date`, `description`,
 `amount_cents` (exact cents string, empty if invalid), `external_id`, `error`,
 `status` (`new`, `known`, `review`, `conflict`, `invalid`), and `candidates`.
@@ -141,8 +146,9 @@ after success must not suggest resubmitting the mutation.
 ## Review interface
 
 Show attention-needed entries first, ready entries below, and known rows in a
-collapsed excluded group, independent of CSV ordering. New valid rows start
-selected; review/conflict/invalid rows do not. Select-all affects only eligible
+collapsed excluded group, independent of CSV ordering. New rows eligible for addition start selected; review/conflict/invalid rows and
+rows needing a description do not. Description eligibility and editing are defined
+in the [profile spec](import-profiles.md#description-editing). Select-all affects only eligible
 new/explicitly-kept rows. Matches are disclosed separately from additions.
 
 Selectable rows use the same round checkbox, whole-row highlight, and flip-in /
@@ -192,7 +198,5 @@ verified. No private exports or running private app are needed.
 
 ## Deferred
 
-Reusable column mapping and parsing settings are proposed in
-[CSV import profiles](import-profiles.md); they are not implemented here.
 Bank-specific adapters, Excel, transfer/refund treatment, and label/report UI
-remain separate work. YAML profile sharing is deferred in the profile proposal.
+remain separate work. YAML profile sharing is deferred in the profile spec.

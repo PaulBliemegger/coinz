@@ -12,7 +12,9 @@ account balances. Building and learning are also part of the project's value.
 Local user creation, login/logout, isolated private data, manual income/expenses,
 editing/deleting entries, a home dashboard with monthly/yearly spending, a
 paginated Entries workspace with period/search filters, exact money handling,
-and example-format CSV preview/import with duplicate review and batch history. A source
+and reusable CSV import profiles with guided column mapping, editable review,
+duplicate protection and batch history. Profiles can also be created/edited
+directly in Imports without a file. A source
 is optional provenance metadata, not a bank ledger. A new user can record an entry
 immediately without setup. The warm Sunday Studio palette
 and restrained dry humor remain the visual direction.
@@ -24,7 +26,7 @@ behavior lives in the feature specs.
 The account/snapshot interface and API are retired. Existing account identities
 become transaction sources; old opening amounts and snapshots are preserved as
 inactive legacy records. See the [manual-ledger spec](specs/manual-ledger.md).
-Planning, configurable import profiles, bank-specific import adapters, labels,
+Planning, bank-specific import adapters, labels,
 and richer insights are not yet implemented. The
 [example importer](specs/csv-import.md) provides a synthetic workflow for testing
 the next ideas.
@@ -80,15 +82,16 @@ ordinary entries. Define these before importing data that would misstate reports
 
 ## Imports and historical data
 
-The current importer supports the [example CSV format](specs/csv-import.md).
+The current importer supports the [example CSV format](specs/csv-import.md) and
+explicit layouts through reusable profiles.
 [Reusable import profiles](specs/import-profiles.md) have an approved Guided
 selection design for supporting different CSV layouts without a programmed
-adapter for each one. Implementation remains proposed.
+adapter for each one. The flow is implemented; browser verification remains blocked.
 They map columns and parsing settings before the existing import overview; YAML
 sharing and file-managed declarative setup are desired later work. N26 and Erste
 remain initial target export streams,
 with dedicated adapters only if configurable mappings cannot cover a demonstrated
-need. Profiles and bank-specific support are not implemented. Preview and validate
+need. Bank-specific adapters are not implemented. Preview and validate
 rows before an atomic commit. Develop format support from wholly synthetic
 examples matching the format, never by reading private bank exports.
 
@@ -112,8 +115,8 @@ concern. See [entry export and reimport](specs/data-portability.md).
 Current implemented behavior is summarized above and detailed in the
 [specification index](specs/README.md). Work on one coherent slice at a time:
 
-1. Implement the approved [CSV import-profile design](specs/import-profiles.md).
-   Add labels, bulk labeling, and useful insight reports through separate slices.
+1. Add labels, bulk labeling, and useful insight reports through separate slices.
+   [CSV import profiles](specs/import-profiles.md) now provide reusable layouts.
    N26/Erste remain target export streams; define transfer/refund treatment before
    supporting real bank formats.
 2. Migrate useful historical Excel material without overlapping totals, when needed.

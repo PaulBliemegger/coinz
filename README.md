@@ -7,26 +7,34 @@ dry humor. Rust/Axum serves a static SvelteKit interface and stores data in SQLi
 
 Implemented: local users and login, manual income/expenses, optional sources,
 a monthly/yearly spending dashboard, paginated Entries with filters and inline
-editing, and example CSV imports with duplicate review and protected batch removal.
+editing, reusable CSV profiles with guided header mapping and editable import
+review, duplicate protection and protected batch removal.
+Create or edit reusable layouts in **Imports → Import profiles**, without
+uploading a file. Changes affect future imports only.
 Appearance follows the system by default, with Light/Dark overrides.
 
 Try **Import CSV** on Home, Entries, or Imports using [demo.csv](examples/imports/demo.csv).
-Create a fresh source, preview the 16 synthetic entries, then import. Choose
+Create a fresh source and profile; map Date to `date`, Amount to `amount`, and
+Description to `description`. Choose `external_id` for the optional ID mapping.
+Keep the default reading settings, name/save the profile, review the 16 synthetic
+entries, then import. Reuse that profile for subsequent example files. Choose
 November 2026 in the centered dashboard month picker to see €2,400.00 income and
 €1,063.79 spending, or use View all to see both imported months.
 Importing the same file again adds nothing;
 [demo-overlap.csv](examples/imports/demo-overlap.csv) adds just a €16 cinema expense.
 Use a synthetic development runtime for this walkthrough.
 
-Only the [example CSV format](docs/specs/csv-import.md) is supported today.
-Reusable import profiles, bank-specific formats, labels, and planning are not yet
-implemented. See [product scope](docs/product.md) for sequencing and the
+The [CSV profile presets](docs/specs/import-profiles.md) support UTF-8 header CSVs,
+comma/semicolon delimiters, three explicit date formats and exact signed EUR
+amounts. Bank-specific adapters, transfer/refund classification, labels, YAML
+profiles and planning remain deferred. See [product scope](docs/product.md) for
+sequencing and the
 [specification index](docs/specs/README.md) for detailed behavior and feature status.
 Bank balance tracking and reconciliation are outside the core scope.
 
 ### Verification status
 
-Verification snapshot (2026-11-22): `make check` passed formatting, lint, all 24
+Verification snapshot (2026-11-23): `make check` passed formatting, lint, all 29
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
 startup because the agent sandbox denies local sockets; browser assertions and
 visual review remain unverified. See [agent test permissions](docs/agent-testing.md).
@@ -114,8 +122,10 @@ cargo run -- create-user wabo
 make dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The frontend proxies `/api` to
-Rust on `127.0.0.1:3000`; `make dev` configures the matching frontend origin.
+Open [http://localhost:5173](http://localhost:5173). Use this exact host: `127.0.0.1:5173`
+is a different origin and `make dev` rejects its writes. An origin mismatch names
+the configured app address; a CSRF/session mismatch asks you to refresh.
+The frontend proxies `/api` to Rust on `127.0.0.1:3000`; `make dev` configures the matching frontend origin.
 Ctrl-C stops the development launcher. You can instead run `make backend` and
 `make frontend` in separate terminals.
 

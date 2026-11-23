@@ -174,18 +174,29 @@ async fn sessions_rotate_persist_and_require_csrf() {
             .0,
         StatusCode::FORBIDDEN
     );
+    let (status, wrong_origin) = anonymous
+        .send(
+            "POST",
+            "/api/login",
+            Some(login.clone()),
+            true,
+            "https://elsewhere.test",
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(
-        anonymous
-            .send(
-                "POST",
-                "/api/login",
-                Some(login.clone()),
-                true,
-                "https://elsewhere.test"
-            )
-            .await
-            .0,
-        StatusCode::FORBIDDEN
+        wrong_origin["error"],
+        format!(
+            "This address does not match the configured app address. Open {ORIGIN} and try again."
+        )
+    );
+    let (status, missing_csrf) = anonymous
+        .send("POST", "/api/login", Some(login.clone()), false, ORIGIN)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        missing_csrf["error"],
+        "Your session changed. Refresh the page and try again."
     );
     assert_eq!(
         anonymous
@@ -1952,5 +1963,336 @@ async fn dense_overlaps_keep_one_creator_and_do_not_block_batch_removal() {
         alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
         3,
         "removing the later import must not delete newly reimported entries"
+    );
+}
+
+fn profile_layout() -> Value {
+    json!({"date":"Booking date", "amount":"Value", "description":"Name", "external_id":"ID", "delimiter":";", "date_format":"DD.MM.YYYY", "decimal":",", "grouping":"."})
+}
+
+#[tokio::test]
+async fn profiles_preserve_evidence_drafts_atomicity_and_history() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let source = alice.source("Synthetic export stream").await;
+    let layout = profile_layout();
+    let (status, profile) = alice
+        .call(
+            "POST",
+            "/api/imports/profiles",
+            Some(json!({"name":"Example layout","layout":layout})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{profile}");
+    let csv = "ID;Name;Value;Booking date;Reference\na;Example Cafe;-1.234,56;03.11.2026;Changed interpretation\nb;;2,01;04.11.2026;Another reference\n";
+    let input = json!({"source_id":source,"csv":csv,"profile_id":profile["id"],"profile_revision":profile["revision"],"selected_records":[2,3]});
+    let (status, preview) = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["rows"][0]["amount_cents"], "-123456");
+    assert!(preview["rows"][1]["description_error"].is_string());
+    assert_eq!(preview["rows"][1]["status"], "new");
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input.clone()))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM transactions")
+            .fetch_one(&h.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM import_batches")
+            .fetch_one(&h.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    let mut edited = input.clone();
+    edited["descriptions"] = json!({"2":"Lunch with Sam","3":"Synthetic refund"});
+    let (status, result) = alice
+        .call("POST", "/api/imports/commit", Some(edited.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    assert_eq!(result["added"], 2);
+    assert_eq!(result["spending_cents"], "123456");
+    let descriptions: Vec<String> =
+        sqlx::query_scalar("SELECT description FROM transactions ORDER BY date")
+            .fetch_all(&h.pool)
+            .await
+            .unwrap();
+    assert_eq!(descriptions, ["Lunch with Sam", "Synthetic refund"]);
+    let evidence: Vec<String> =
+        sqlx::query_scalar("SELECT description FROM import_records ORDER BY date")
+            .fetch_all(&h.pool)
+            .await
+            .unwrap();
+    assert_eq!(evidence, ["Example Cafe", ""]);
+    let snapshot: String = sqlx::query_scalar("SELECT interpretation FROM import_batches LIMIT 1")
+        .fetch_one(&h.pool)
+        .await
+        .unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&snapshot).unwrap(), layout);
+    let (_, repeated) = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await;
+    assert_eq!(repeated["rows"][0]["status"], "known");
+    assert_eq!(repeated["rows"][1]["status"], "known");
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(edited))
+            .await
+            .1["added"],
+        0
+    );
+    // A different file with the same bank fields still uses original evidence.
+    let mut overlap = input.clone();
+    overlap["csv"] = json!(csv.replace("Changed interpretation", "Extra unrelated value"));
+    let (_, preview) = alice
+        .call("POST", "/api/imports/preview", Some(overlap))
+        .await;
+    assert_eq!(preview["rows"][0]["status"], "known");
+    // Change the description mapping: the same file must conflict, never overwrite history.
+    let mut changed_layout = layout.clone();
+    changed_layout["description"] = json!("Reference");
+    let path = format!("/api/imports/profiles/{}", profile["id"].as_str().unwrap());
+    let (status, updated) = alice
+        .call(
+            "PUT",
+            &path,
+            Some(json!({"name":"Updated", "layout":changed_layout, "revision":1})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(updated["id"], profile["id"]);
+    assert_eq!(updated["revision"], 2);
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input.clone()))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let mut changed = input;
+    changed["profile_revision"] = json!(2);
+    let (_, preview) = alice
+        .call("POST", "/api/imports/preview", Some(changed.clone()))
+        .await;
+    assert_eq!(preview["rows"][0]["status"], "conflict");
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(changed))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let unchanged: String = sqlx::query_scalar("SELECT interpretation FROM import_batches LIMIT 1")
+        .fetch_one(&h.pool)
+        .await
+        .unwrap();
+    assert_eq!(unchanged, snapshot);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM transactions")
+            .fetch_one(&h.pool)
+            .await
+            .unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn profile_routes_enforce_ownership_csrf_and_compatible_headers() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let source = alice.source("Alice synthetic").await;
+    let bob_source = bob.source("Bob synthetic").await;
+    let data = json!({"name":"Example","layout":profile_layout()});
+    assert_eq!(
+        alice
+            .send(
+                "POST",
+                "/api/imports/profiles",
+                Some(data.clone()),
+                false,
+                ORIGIN
+            )
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let profile = alice
+        .call("POST", "/api/imports/profiles", Some(data.clone()))
+        .await
+        .1;
+    let path = format!("/api/imports/profiles/{}", profile["id"].as_str().unwrap());
+    let mut update = data.clone();
+    update["revision"] = json!(1);
+    assert_eq!(
+        bob.call("PUT", &path, Some(update.clone())).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        alice
+            .send("PUT", &path, Some(update.clone()), false, ORIGIN)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, bob_profiles) = bob.call("GET", "/api/imports/profiles", None).await;
+    assert_eq!(bob_profiles, json!([]));
+    let input = json!({"source_id":source,"csv":"Booking date;Value;Name;ID\n03.11.2026;-1,23;Example;a\n", "profile_id":profile["id"],"profile_revision":1});
+    let mut foreign = input.clone();
+    foreign["source_id"] = json!(bob_source);
+    for endpoint in ["/api/imports/preview", "/api/imports/commit"] {
+        assert_eq!(
+            bob.call("POST", endpoint, Some(foreign.clone())).await.0,
+            StatusCode::NOT_FOUND
+        );
+        foreign["profile_id"] = Value::Null;
+        foreign["profile_revision"] = Value::Null;
+        foreign["layout"] = profile_layout();
+        if endpoint.ends_with("preview") {
+            assert_eq!(
+                alice.call("POST", endpoint, Some(foreign.clone())).await.0,
+                StatusCode::NOT_FOUND
+            );
+        }
+        foreign = input.clone();
+        foreign["source_id"] = json!(bob_source);
+    }
+    let (status, _) = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut bad = input.clone();
+    bad["csv"] = json!("Booking date;Value;Other;ID\n03.11.2026;-1,23;Example;a\n");
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/preview", Some(bad))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let mut no_saved = input.clone();
+    no_saved["profile_id"] = Value::Null;
+    no_saved["profile_revision"] = Value::Null;
+    no_saved["layout"] = profile_layout();
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(no_saved))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice.call("PUT", &path, Some(update.clone())).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        alice.call("PUT", &path, Some(update)).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/preview", Some(input))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM import_records")
+            .fetch_one(&h.pool)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn profile_drafts_do_not_change_matching_or_existing_entries() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let source = alice.source("Synthetic stream").await;
+    let manual = alice.entry(None, "2026-11-03", "1.23", "expense").await;
+    let profile = alice
+        .call(
+            "POST",
+            "/api/imports/profiles",
+            Some(json!({"name":"Layout","layout":profile_layout()})),
+        )
+        .await
+        .1;
+    let input = json!({"source_id":source,"csv":"Booking date;Value;Name;ID\n03.11.2026;-1,23;Synthetic entry;\n", "profile_id":profile["id"],"profile_revision":1,"selected_records":[2]});
+    let (_, preview) = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await;
+    assert_eq!(preview["rows"][0]["status"], "review");
+    let mut draft = input.clone();
+    draft["descriptions"] = json!({"2":"User wording"});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(draft.clone()))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    draft["decisions"] = json!([{"record":2,"action":"match","transaction_id":manual}]);
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(draft.clone()))
+            .await
+            .1["matched"],
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT description FROM transactions WHERE id=?")
+            .bind(&manual)
+            .fetch_one(&h.pool)
+            .await
+            .unwrap(),
+        "Synthetic entry"
+    );
+    let mut invalid = draft.clone();
+    invalid["descriptions"] = json!({"99":"Foreign record"});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(invalid))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let mut invalid = draft;
+    invalid["descriptions"] = json!({"2":"  "});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(invalid))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    // A second owned profile cannot evade source duplicate protection.
+    let second = alice
+        .call(
+            "POST",
+            "/api/imports/profiles",
+            Some(json!({"name":"Another","layout":profile_layout()})),
+        )
+        .await
+        .1;
+    let mut repeat = input;
+    repeat["profile_id"] = second["id"].clone();
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/preview", Some(repeat))
+            .await
+            .1["rows"][0]["status"],
+        "known"
     );
 }

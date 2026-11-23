@@ -80,6 +80,14 @@ pub async fn app(
         .route("/summary", get(ledger::summary))
         .route("/entries", get(reports::entries))
         .route("/dashboard", get(reports::dashboard))
+        .route(
+            "/imports/profiles",
+            get(imports::profiles::list).post(imports::profiles::create),
+        )
+        .route(
+            "/imports/profiles/{id}",
+            axum::routing::put(imports::profiles::update),
+        )
         .route("/imports/history", get(imports::history::list))
         .route("/imports/history/{id}", get(imports::history::detail))
         .fallback(|| async { crate::error::AppError::not_found() })
@@ -94,6 +102,7 @@ pub async fn app(
         )
         .merge(
             Router::new()
+                .route("/imports/sample", post(imports::sample))
                 .route("/imports/preview", post(imports::preview))
                 .route("/imports/commit", post(imports::commit))
                 .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024)),

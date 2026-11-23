@@ -1,10 +1,10 @@
 # CSV import profiles
 
-Status: proposed implementation; behavior and **Guided selection** design approved,
-not implemented. This is the authoritative feature definition for the next
-implementation chat. Parsing details marked as recommendations remain bounded
-implementation choices. The [example CSV importer](csv-import.md) describes current
-behavior; approving this spec does not change the running application.
+Status: implemented in source. Browser journeys and visual review remain unverified
+because the sandbox prevents local server startup; see the
+[README verification status](../../README.md#verification-status).
+This is the authoritative profile workflow and parsing contract. The
+[CSV import spec](csv-import.md) owns shared duplicate, provenance and commit rules.
 
 ## Goal and agreed scope
 
@@ -19,44 +19,23 @@ are deferred. File-managed YAML profiles are a desired later capability for
 sharing and declarative setup without the UI; see [file-managed profiles](#deferred-file-managed-profiles).
 They are not required for the first version.
 
-## Shared transaction fields
+## Description and saved entries
 
-Agreed rule: every saved entry must have readable descriptive text, whether it
-was entered manually or imported. A bank CSV need not have a dedicated description
-column: a counterparty/account-holder name can supply that text.
+Use one **Description** field, following the saved-entry requirements in the
+[manual-ledger spec](manual-ledger.md#entries-and-reporting). A bank CSV need not
+have a column literally named Description: a Name, Counterparty or Reference
+column can supply readable text, such as **Example Cafe**. No separate structured
+counterparty or payment-reason field is required. Manual entry stays unchanged.
 
-Use one primary **Description** field. Defer a separate structured counterparty
-field until a concrete need justifies it. The normal manual form keeps its
-existing small field set:
+All three primary column mappings are required. If the mapped text cell is blank
+or too long, the row needs an edited description in review before it can be added,
+or it can be left for later. Never invent a **No description** placeholder.
+Description edits affect new entries, while original imported text remains matching
+evidence; see [description editing](#description-editing).
 
-| Field | Required on a saved entry | Meaning |
-| --- | --- | --- |
-| Date | Yes | Calendar date of the transaction |
-| Amount | Yes | Nonzero EUR amount; positive is income, negative is expense |
-| Description | Yes | Readable text identifying the entry: a name, reference, or the user's own wording |
-
-For example, a user can enter **Lunch with Sam** manually, or an import profile
-can map the bank's `Counterparty` column to Description and produce **Example Cafe**.
-Both are valid descriptions. The field does not require prose or a payment reason.
-If the bank supplies a useful `Reference` instead, that column can be chosen.
-
-This distinguishes the input layout from the saved-entry requirement. A dedicated
-CSV description column is optional; readable text on the final entry is required.
-If the mapped cell is blank, the row needs a description before it can be added,
-or it can be left out for later. Do not satisfy the rule with an automatically
-invented **No description** value. The approved first flow maps all three fields;
-allowing a profile with no text-column mapping is a later extension, if needed.
-
-Manual entry stays short and keeps its current amount plus income/expense control;
-it need not expose a signed-number input or ask whether a name belongs in a
-different field. The current manual form and fixed example importer already
-require descriptions; no runtime behavior changes here. Description limits and
-exact money/date rules remain in the [manual-ledger spec](manual-ledger.md).
-
-Counterparty names are suitable input for Description, without introducing
-another entry field. Source remains separate provenance identifying an account's
-export stream. Structured counterparties, column combination, and fallback chains
-are deferred; they are not requirements for this profile slice.
+Source remains separate provenance identifying an export stream. Structured
+counterparties, profiles without a text-column mapping, text composition and
+fallback chains remain deferred.
 
 ## Import workflow
 
@@ -86,7 +65,7 @@ interpretation. Cancelling writes no transactions or import evidence. Explicitly
 saved profiles and separately created sources may remain, like today's source
 creation; make this clear in the flow.
 
-## Profile behavior and recommended parsing scope
+## Profile behavior and parsing scope
 
 Profiles are reusable by their owner across imports and sources with the same
 layout. The profile describes a format, not an account identity. Choosing a
@@ -96,17 +75,22 @@ Save named profiles persistently for the authenticated user. Reusing a compatibl
 profile goes directly to entry review; checking or changing its mapping remains
 available. Distinguish saving a new profile from explicitly saving changes to an
 existing one, and preserve its stable identity when updating it. Profile deletion
-and a separate management screen are deferred unless needed for the core flow.
+remains deferred. The Imports tab also supports creating and editing profiles
+independently of an import; see the editor below.
 
-Recommended first scope, to confirm before implementation:
+Implemented parsing scope:
 
 - UTF-8 CSV with a header row, ordinary quoting, and comma or semicolon delimiters.
+  At most 100 named columns; header names are at most 200 characters.
   Headerless files, preambles, and other encodings can be later extensions.
 - Map columns by header rather than position so reordered columns still work.
   Do not silently choose between duplicate header names.
-- Store an explicit date format, for example `YYYY-MM-DD`, `DD.MM.YYYY`, or
+- Store one explicit date format: `YYYY-MM-DD`, `DD.MM.YYYY`, or
   `DD/MM/YYYY`. Do not guess the meaning of an ambiguous date per row.
-- Store explicit decimal and grouping conventions. For example, `-1.234,56` can
+- Store an explicit dot or comma decimal separator, and no grouping, dot, comma,
+  or ASCII-space grouping (different from the decimal separator). Grouped whole
+  numbers have 1–3 leading digits and groups of exactly three digits. No currency
+  symbols, exponent notation, or plus prefix are accepted. For example, `-1.234,56` can
   mean an expense of EUR 1,234.56 under the appropriate settings. Parse exactly
   into integer cents; reject excess precision instead of rounding.
 - Use the agreed signed amount column: positive income and negative expense.
@@ -119,20 +103,43 @@ first mapping flow. Automatic format detection may suggest settings later, but
 explicit confirmed settings define interpretation. EUR remains the only currency;
 profiles do not add currency conversion or make mixed-currency exports valid.
 
+## Profile editor in Imports
+
+The Imports tab has a collapsible **Import profiles** section alongside history.
+List owned profiles with their names, primary mappings and reading presets. **New
+profile** and **Edit** open an inline form for the name, exact CSV header names
+(Date, Amount, Description, optional External ID) and the existing parsing presets.
+No file, sample values, source or visual picker is needed. Header spelling, spaces
+and capital letters matter; the actual file compatibility check still happens at
+import time. A text column named Name or Counterparty can supply Description.
+
+Saving creates a profile or updates its stable identity with revision checking.
+It creates no entries, provenance or import-history batch and never rewrites past
+imports. Cancel/Escape discards the local form. Unsaved fields survive list refresh;
+a stale save is rejected and asks the user to cancel, reload and reopen the latest
+profile. A successful save updates the local catalog; the import picker loads saved
+profiles on opening. Profile deletion and automatic profile suggestions are deferred.
+
 ## Existing guarantees and profile changes
 
 The [CSV import spec](csv-import.md) remains authoritative for source ownership,
 duplicate review, selected subsets, atomic commit, provenance, user-edit
-preservation, and upload limits. Its fixed example header/parser contract is
-current behavior, not a restriction on this proposed mapping feature.
+preservation, and upload limits. Its fixed example header/parser contract remains
+available for legacy API clients that omit a profile. The UI uses saved profiles
+for both example and mapped CSVs.
 
 The backend validates the mapping and reinterprets the file at commit using the
 same confirmed settings as the preview. A profile change between preview and
 commit must require a fresh preview rather than silently changing the result.
 Changes to a saved profile affect future imports, never historical transactions
-or the original evidence explaining prior imports. Define how conflicting
-reinterpretations of previously imported rows are reviewed before implementation;
-do not silently overwrite edits or treat a profile change as a new export stream.
+or the original evidence explaining prior imports. The same source/file/record is
+known only when its original normalized date, description, cents and external ID
+agree. A changed interpretation is a conflict,
+left out in the UI; check the mapping or correct the file. A new file with an
+existing external ID and changed original fields also conflicts. Changing profiles
+never creates another export stream. ID-less rows in different files retain the
+existing exact-field candidate rules; mapping cannot prove identity after arbitrary
+changes to those fields. No conflicting row overwrites an entry or its evidence.
 
 Profiles and all profile operations are scoped to the authenticated user.
 Sample transaction values belong to the current preview, not to the reusable
@@ -140,10 +147,9 @@ profile definition. Keep uploads and financial contents out of logs.
 
 ## Approved interaction design
 
-**Guided selection** is the approved design. The alternative **Header menus** is
-not selected for implementation. Prototypes are synthetic chat artifacts outside
-the repository; the description below is self-contained so another chat does not
-depend on a machine-specific artifact path or earlier conversation history.
+The implemented import flow uses Guided selection in a modal. A dedicated-page
+workspace and automatic profile suggestions remain deferred; they are separate
+from the existing file-free profile editor in Imports.
 
 ### File and profile
 
@@ -165,8 +171,16 @@ depend on a machine-specific artifact path or earlier conversation history.
 - Prompt **Choose the Date column**. Activating a header assigns it and advances
   to Amount, then Description. For Description, explain that a name, counterparty,
   or reference column is suitable. No dedicated counterparty input is shown.
-- Give mapped headers text badges, with a quiet highlight through the selected
-  column. Selecting a column configures a mapping, not an import-row selection.
+- Give Date a blue tint, Amount an ochre tint, and Description a plum tint,
+  shared by their numbered field controls, header badges and column highlights.
+  Keep text labels and active-field outlines so colour is never the only cue.
+  Use a wider desktop mapping workspace with separated reading/preview panels;
+  stack controls and panels on phones. Selecting a column configures a mapping,
+  not an import-row selection.
+- Keep the CSV table connected with vertical column borders. Available headings
+  show **Do I describe Date/Amount/Description?** for the active field, without
+  separate button boxes or pulsing. Hovering or focusing a heading highlights its
+  whole column; native keyboard focus remains visible.
 - Allow direct remapping by activating any of the three field controls. After all
   mappings are complete, show that state rather than silently assigning another
   field when a header is clicked.
@@ -199,12 +213,6 @@ the table can scroll horizontally inside its own region; mapping controls, activ
 prompt, errors, and primary action must reflow without page-wide overflow or tiny
 text. Support header activation by keyboard and comfortable touch targets.
 
-The profile picker shows layout separately from source. Saved mappings are checked
-against the chosen file before review. Future file-managed profiles show a
-read-only explanation and **Make an editable copy**; ordinary imports can reuse
-them without opening an editor. This design state is deferred, not a
-requirement to implement file loading in the first slice.
-
 ## Description editing
 
 Prefill Description from the selected CSV column and allow adding or changing it
@@ -219,6 +227,9 @@ after an otherwise undescribed entry is saved. A nonempty description may always
 be refined after import. Activate descriptions directly; show a small native
 input with Save/Cancel and Escape to cancel, following the ledger's editing style.
 Do not save on blur or turn the raw CSV table into a spreadsheet editor.
+Finish or cancel open description editors, draft-to-match confirmations, and
+mapping-discard confirmations before the final import action. Navigation controls
+are disabled while an import commit is pending.
 
 Draft descriptions apply to new additions only at final commit. Preserve the
 normalized original row as matching evidence; a
@@ -269,10 +280,10 @@ file-configured. Browser appearance/selection preferences remain personal UI
 settings. Transaction data belongs in private exports/backups, not configuration
 Git history; see [entry export and reimport](data-portability.md).
 
-## Acceptance examples for future implementation
+## Acceptance examples
 
-These are proposed acceptance criteria, not completed test evidence. Use wholly
-synthetic CSVs and temporary databases.
+These scenarios define the implemented behavior. Automated evidence and remaining
+verification limits are listed below; all fixtures are wholly synthetic.
 
 | Scenario | Expected result |
 | --- | --- |
@@ -291,31 +302,73 @@ synthetic CSVs and temporary databases.
 | Confirm the profile layout | Open the import overview without creating any transactions |
 | Reimport into the same source with another profile | Existing duplicate/provenance checks still apply |
 | Edit a saved profile after an earlier import | Earlier transactions and their original import evidence stay intact |
+| Create/edit a profile in Imports without a file | Save its owned layout without writing entries, evidence or history; editing preserves the profile ID |
+| Cancel the profile editor | Saved profile stays unchanged |
+| Resolve a draft-to-match confirmation | Import stays disabled until the user keeps the draft or confirms discarding it; the existing entry is never overwritten |
 | Another user requests a profile by ID | No access or mutation is allowed |
 
 ## Other deferred work and remaining design choices
 
-- YAML upload/download and sharing use the future file schema above. The schema
-  itself and file lifecycle remain undecided.
 - Separate debit/credit columns, unsigned amounts plus a direction column,
   multi-column text composition, and other transformations.
-- Confirm the recommended delimiter, date, number, and encoding scope using
-  synthetic examples before implementation; do not claim every CSV is supported.
+- Additional date/number conventions, encodings and delimiter detection remain deferred;
+  the implemented presets do not imply arbitrary bank-export support.
 - Structured counterparty metadata, profiles without any description-column
-  mapping, profile deletion, and a separate management screen are deferred.
-- Choose the concrete database/API shape and immutable import-interpretation
-  mechanism during implementation; YAML schema remains deferred.
+  mapping, and profile deletion remain deferred.
 - Transfer/refund semantics remain a separate prerequisite for safely supporting
   exports containing those movements; mapping alone does not classify them.
 
-## Verification and handoff
+## Persistence and API
 
-No production implementation or acceptance evidence exists yet. Prototype logic
-checks are design aids, not proof of browser rendering or accessibility.
-Implementation needs parser tests, temporary-database ownership and duplicate
-regressions, browser journeys, and synthetic desktop/phone/light/dark visual review.
-Follow the [feature workflow](../feature-workflow.md) for checks and review.
+Migration 0008 stores owned profile IDs, names, layouts and monotonically increasing
+revisions. Names are trimmed, 1–80 characters. Updating requires the current
+revision and preserves identity. No sample values belong to a profile. Each new
+batch and evidence row stores an immutable JSON layout snapshot; older evidence
+has a null snapshot identifying the legacy example parser. Raw uploads are not stored.
 
-Temporary continuation context, prototype-check details, and a starter prompt are
-in the [implementation handoff](../handoffs/import-profiles.md). Remove that handoff
-after implementation and retain this spec as the authoritative behavior.
+All endpoints require authentication; writes, including sample/preview requests,
+require CSRF and Origin validation through the existing middleware.
+
+| Endpoint | Contract |
+| --- | --- |
+| `GET /api/imports/profiles` | Owned `{ id, name, revision, layout }[]` |
+| `POST /api/imports/profiles` | `{ name, layout }`, returns the created profile (201) |
+| `PUT /api/imports/profiles/{id}` | `{ name, layout, revision }`, returns the updated profile |
+| `POST /api/imports/sample` | `{ csv, delimiter }`, returns `{ headers, sample, total }`; first five original records |
+| `POST /api/imports/preview` | Existing import request plus `profile_id` and `profile_revision`; a draft `layout` instead is allowed only for mapping preview |
+| `POST /api/imports/commit` | Existing import request plus saved `profile_id`, `profile_revision`, optional `descriptions` keyed by record number |
+
+A layout contains header names `date`, `amount`, `description`, nullable
+`external_id`, and explicit `delimiter`, `date_format`, `decimal`, `grouping`.
+Mapped fields use distinct headers; missing/ambiguous mapped headers reject preview
+and commit. Unmapped columns remain ignored. Sample requests share CSV bounds
+and structural validation with mapped parsing. The CSV endpoints have the existing
+2 MiB JSON limit; profile operations retain 16 KiB.
+
+Both preview and commit reparse the upload. At commit, profile revision checking
+and duplicate revalidation run under the same SQLite write lock. Stale revisions
+require another preview. Preview has separate `description_error` and structural/value `error`:
+blank or overlong text can be corrected without changing original matching evidence.
+A description override is trimmed and validated (1–200 characters), may name only
+a selected record, and applies only to a new addition. Matches/known rows retain
+existing entries. Invalid selected rows or descriptions roll back the entire commit,
+including batch history and evidence.
+
+## Verification
+
+`backend/src/imports/parse.rs` tests reordered/missing/ambiguous headers, explicit
+date presets, grouped exact cents, invalid precision/signs/overflow, and blank text.
+`backend/tests/ledger.rs` adds temporary-database profile ownership/CSRF, revision,
+immutable evidence, atomic description validation, original-field matching, and
+cross-profile/repeated-file regressions. Existing import/history/concurrency tests
+continue covering shared guarantees. `frontend/tests/import-selection.test.ts`
+covers description eligibility with exact selection totals.
+
+The desktop/phone Playwright journeys include profile creation/editing without a
+file, Cancel/Escape, stable IDs/revisions, picker reuse, unchanged history, and
+light/dark editor screenshots. They also include keyboard header mapping, semicolon
+and explicit parsing presets, description Save/Cancel/Escape, draft-discard warning,
+saved-profile reuse, repeat import after edits, and light/dark synthetic screenshots.
+They are defined coverage, not completed browser assertions or visual review.
+The sandbox blocks local server startup, and the previously declined escalation
+has not been retried. See the README for the complete check results and limits.

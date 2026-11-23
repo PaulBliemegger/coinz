@@ -333,7 +333,7 @@
               ? 'The bigger picture.'
               : view === 'entries'
                 ? 'Where did it go?'
-                : 'Import history'}
+                : 'Imports'}
           </h1>
           <p class="muted">
             {view === 'home'

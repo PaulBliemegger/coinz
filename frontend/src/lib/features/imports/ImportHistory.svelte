@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, ApiError, type ImportHistoryPage, type ImportReview } from '#lib/api.ts';
   import { dateLabel } from '#lib/money.ts';
+  import ImportProfiles from './ImportProfiles.svelte';
   import ImportRemovalEntries from './ImportRemovalEntries.svelte';
   import { escapeToCancel } from '#lib/features/ledger/escape.ts';
   let {
@@ -100,6 +101,7 @@
   <p class="muted">The paperwork has paperwork.</p>
   <button class="button" disabled={busy} onclick={onimport}>Import CSV</button>
 </div>
+{#if !selected}<ImportProfiles {refresh} {onunauthorized} />{/if}
 {#if selected}<button
     class="button quiet"
     disabled={busy}
