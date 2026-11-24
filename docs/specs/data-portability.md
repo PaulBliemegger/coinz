@@ -1,105 +1,125 @@
 # Entry export and reimport
 
-Status: desired future capability; deferred, not implemented. This records scope
-for later definition, not an existing download/restore promise. Current operational
-backup instructions remain in the [README](../../README.md#later-homelab-deployment).
+Status: CSV export and restoration implemented in source. Settings JSON remains
+proposed. See the [README](../../README.md#verification-status) for current checks.
 
-## Goal
+## Workflow and scope
 
-Export entries as a clean, documented CSV for personal copies, spreadsheets, and
-moving recorded entries into another installation. Extend the existing CSV
-importer, reusing its preview, duplicate review and atomic commit. A reusable
-coinz export layout should avoid repetitive mapping.
+**User menu → Settings → Your data → Export all entries** downloads
+`coinz-entries.csv` containing every
+entry owned by the signed-in user, across all dates, filters and pages, including
+future-dated entries. It is a snapshot of recorded entries, not proof of complete
+bank history. Empty ledgers produce the header only.
 
-## Agreed v0.1 direction (proposed, not implemented)
+Use **Import CSV**, choose the downloaded file, then **Review entries**. The
+complete coinz header is recognized automatically; no bank profile, mapping or
+single import source is needed. Review shows each row's saved category, labels
+and optional source. Select additions and resolve duplicate candidates using the
+existing import decisions. Confirmation is atomic and creates a new import batch.
+Cancelling preview writes nothing. Sources and classification names are created
+only for committed additions, inside the same transaction.
 
-Use a plain per-user entries CSV and versioned settings JSON. The CSV contains
-date, signed amount, description, category, labels, and optional source. A CSV
-format version or manifest is not required initially; explicit conversion scripts
-are acceptable for breaking changes. Settings JSON carries a schema version and
-preserves categories/labels, sources, import profiles, labeling rules, and saved
-budgets, including references between them. Importing those settings must be
-supported too; downloading JSON alone does not provide a recovery path.
+Exports/restores support up to 50,000 entries and 16 MiB of UTF-8 CSV. Export fails
+explicitly above either limit and never returns a partial snapshot. Ordinary
+bank CSV limits remain 1,000 rows/256 KiB. The restore endpoints allow a larger
+JSON envelope for escaping; parsing still enforces the CSV byte/row bounds.
 
-Extend the existing importer to restore the exported classification and per-row
-source fields. Keep source-less entries source-less. Reuse existing duplicate
-semantics rather than building a second duplicate system. Exporting and restoring
-more than the bank import's current row/size limits needs an explicit supported
-path. The scope is portable user data and setup, not import-history restoration.
+## CSV contract
 
-After a verified synthetic round trip, intentional development schema resets are
-acceptable: export, explicitly create an empty database, restore settings and
-entries, and verify counts/totals. Never reset automatically on startup. Full
-database backup tooling and heavy performance tests are not prerequisites for
-this personal trial; Glances and manual workflows provide initial feedback.
+UTF-8, comma separated, standard CSV quoting, with this exact header order:
 
-## Proposed first scope
+```csv
+date,amount,description,category,labels,source,entry_ref,source_ref,origin
+```
 
-- Export all entries owned by the authenticated user by default, across every
-  month/page. A filtered export may be offered separately, with its scope and
-  count stated explicitly. Never silently export only the visible page.
-- Use UTF-8 CSV with a header, standard quoting, ISO calendar dates, and exact signed
-  EUR decimal amounts with a dot and two fractional digits. No float conversion,
-  localization-dependent parsing, or rounding.
-- Preserve date, description, signed amount, optional counterparty if implemented,
-  and optional source association. Preserve distinct sources even when their
-  display names are identical. Entries without a source stay without a source.
-- Include entry/source references where needed for repeat imports and distinct
-  source mapping; settle the exact columns before implementation. References never
-  authorize access or require copying database/user IDs between installations.
-- Preview and validate native imports before an atomic selected-row commit.
-  Preserve legitimate identical entries. Reimporting an unchanged native export
-  into the same destination must not add copies. Conflicting edits require review;
-  importing a file must not silently replace or delete existing records.
-- Import into the authenticated user's data only. Resolve source references within
-  that user's namespace. Do not reinterpret native IDs as bank-issued IDs or create
-  one artificial bank source for every restored entry.
-- Make export/reimport usable without a browser eventually, through a deliberately
-  scoped CLI or equivalent supported interface. Commands and authentication are
-  not designed yet. Data files remain private and outside the application/config
-  Git repository, following the [privacy boundary](../privacy.md).
+- `date`: ISO calendar date. `amount`: signed EUR decimal with a dot and two
+  fractional digits on export. Import uses exact integer cents and rejects zero,
+  grouping, excess precision and overflow. No float conversion or rounding.
+- `description`: the saved text, including quoted commas, quotes and line breaks.
+- `category`: saved name, or empty for Uncategorized. `labels`: a JSON array of
+  saved label names inside the CSV field, preserving separators and punctuation.
+  Duplicate label names are invalid. Labels are sorted for deterministic output.
+- `source`: saved name, or empty. `source_ref`: UUID reference, or empty with the
+  source. Distinct references preserve distinct sources even with identical names.
+  A source-less entry remains source-less. Existing source-reference/name
+  conflicts reject the commit; names alone never merge sources.
+- `entry_ref`: UUID reference preserving each entry's identity, including valid
+  identical purchases. `origin`: `manual`, `csv` or `unknown`, preserved on restore.
 
-An export is a snapshot of recorded entries, including future-dated entries that
-are already in the ledger. It does not imply complete bank coverage or include
-unimplemented planning assumptions.
+References resolve only within the authenticated user's namespace. They do not
+authorize access or copy internal user IDs. A fresh installation generates its
+own entry/source IDs and remembers portable references. Subsequent exports keep
+those references. Native references are never treated as bank-issued IDs.
 
-## Entry copies and full backups
+Missing category/label names are created as active items using the default sage
+colour. Existing names resolve case-insensitively within the same kind and keep
+their current spelling, colour and archived state. Saved assignments to archived
+items can be restored without unarchiving those items. CSV restores assignments;
+unused vocabulary and its colour/archive settings require the later settings
+export. Import rules do not reinterpret the saved classification. Edit restored
+entries normally afterward; the native review does not offer classification or
+description overrides. Matching an existing entry retains all its current fields.
 
-A clean entries CSV is a useful portable copy of transaction data. By itself it
-does not preserve all import evidence, duplicate decisions, batch history, profile
-definitions, user identities, password hashes, or sessions. Do not label it a full
-application backup or promise complete duplicate/history restoration from it.
-Categories and labels must survive the first round trip. Other entry metadata
-needs an explicit decision when the corresponding feature is implemented.
+There is no CSV format version or manifest initially. Explicit conversion scripts
+are acceptable for a future breaking change.
 
-Full recovery currently uses the private SQLite/data-directory procedure in the
-README. A future supported backup command could create a consistent database
-snapshot with SQLite's [Online Backup API or VACUUM INTO](https://www.sqlite.org/backup.html);
-do not replace the existing procedure with copying a running main database file.
-Backup scheduling/storage are deployment concerns. Full backup automation and a
-richer portable archive are deferred, separate from the first entries CSV slice.
+## Duplicates and conflicts
 
-## Acceptance examples for future implementation
+The shared import preview, selection, match/keep choices and serialized commit
+remain in use. Portable references add native identity ahead of ordinary exact
+candidate matching:
 
-No test evidence exists yet; use synthetic fixtures only.
+- Restoring an unchanged snapshot again adds no copies, including after the file
+  is reordered or exported from the restored installation.
+- Two identical purchases with different references survive an empty-install
+  restore. Repeated references within one file conflict rather than being silently
+  discarded.
+- A known reference whose current fields/classification/source differ conflicts;
+  restoration never overwrites or deletes local edits. Leave it out, reconcile
+  the file deliberately, or use a fresh destination.
+- An unknown reference with an exact existing candidate requires ordinary review.
+  Keep it as a separate purchase or match an owned candidate. Matching attaches
+  the reference without changing the existing entry's fields.
+- Invalid selected rows, unavailable matches, ownership violations and failures
+  roll back entries, new source/classification names and import evidence together.
+  Unselected rows retain the existing import semantics.
 
-- Export more than one page across two years: all owned entries appear, and another
-  user's entries do not. A deliberately filtered export clearly states its scope.
-- Round-trip an expense of EUR 12.34 and income of EUR 2,000.00: amounts and calendar
-  dates remain exact; commas, quotes, and line breaks in descriptions survive.
-- Round-trip an entry whose description is just a merchant or payer name: retain
-  that text exactly, without requiring a separate counterparty or payment reason.
-- Export two identical purchases and restore into an empty destination: both remain.
-  Restore the same export again: no new copies are added.
-- Round-trip a source-less entry and entries from two equally named sources: the
-  source-less entry remains so, and the two sources remain distinct.
-- Restore over a locally edited entry: show a conflict rather than overwriting it.
-- Invalid selected rows or foreign ownership references reject the mutation atomically.
+`GET /api/exports/entries.csv` requires a session and returns a no-store CSV
+attachment. `POST /api/imports/restore/preview` and `/commit` use the existing import
+request/response types and require session authentication and CSRF protection.
+The parser also recognizes this format through the ordinary preview/commit routes
+when it fits their smaller request envelope. No bank profile or single source may
+be supplied for a coinz snapshot. Preview creates no persistent data.
 
-## Decisions before implementation
+## Entry copies, setup and full recovery
 
-Settle the CSV columns/encoding, repeat-import identity, conflict choices,
-cross-installation source mapping, and treatment of entry method/origin. Native
-restore must not invent bank provenance or claim it restored omitted batch history.
-Design the small export/reimport UI when this slice is selected; no placeholder
-export control is added now.
+CSV does not preserve original bank import evidence, duplicate decisions, batch
+history, profiles, rules, budgets, unused classifications, user accounts, password
+hashes or sessions. It is a portable entry copy, not a full application backup.
+Later overlapping bank files may require review again, especially for edited
+bank descriptions. Credentials must be created independently on a fresh install.
+
+Versioned settings JSON export/import is the next proposed slice: preserve
+categories/labels, sources, CSV profiles, labeling rules and saved budgets,
+including their relationships. Restore settings before entries. CLI portability
+and full database backup tooling remain deferred. The existing private SQLite
+recovery procedure is in the [README](../../README.md#later-homelab-deployment).
+
+After a verified round trip, deliberate development schema resets are acceptable:
+export, explicitly create an empty database, restore settings/entries, then check
+counts and totals. Startup must never silently reset an incompatible database.
+All private exports and runtime data stay outside the repository and agent context;
+use wholly synthetic fixtures for development, following [privacy](../privacy.md).
+
+## Acceptance evidence
+
+Synthetic tests in `backend/tests/ledger.rs` cover a 1,005-entry round trip into
+an independent temporary installation, two years, exact large money values,
+quoted/multiline descriptions and label punctuation, identical purchases,
+source-less entries, equally named distinct sources, origin/classification
+assignments, repeat and overlapping restores, local-edit conflicts, authentication,
+CSRF, two-user isolation, explicit matching and atomic failure. Parser tests in
+`backend/src/imports/portable.rs` validate money, names, references and JSON labels.
+`frontend/e2e/portability.spec.ts` defines desktop/phone download, preview, restore
+and repeat-preview journeys. The README distinguishes executed checks from pending
+browser verification.

@@ -118,9 +118,9 @@ The old Excel material includes both summaries and individual entries. Summary
 coverage must remain separate so it cannot be added to detailed entries it already
 includes. A one-off migration is acceptable; no general spreadsheet engine is needed.
 
-Clean entry CSV export/reimport is a desired future capability for portable
-transaction copies. Full database recovery remains a separate operational backup
-concern. See [entry export and reimport](specs/data-portability.md).
+Per-user entry CSV export and restoration through import review are implemented.
+Versioned settings JSON is the next portability slice; full database recovery
+remains a separate operational backup concern. See [entry export and reimport](specs/data-portability.md).
 
 ## Next slices
 

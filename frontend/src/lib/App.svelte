@@ -757,6 +757,19 @@
     />Always show selection controls
   </label>
   <p class="muted">Otherwise controls appear on hover or focus. Touch screens always show them.</p>
+  <section aria-labelledby="settings-data-title">
+    <h3 id="settings-data-title">Your data</h3>
+    <p>
+      Download all your entries as CSV, across every date and page. Restore the file through Import
+      CSV.
+    </p>
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- Axum serves this download outside SvelteKit routes. -->
+    <a class="button" href="/api/exports/entries.csv" download>Export all entries</a>
+    <p class="muted">
+      Includes entry categories, labels and optional sources. Profiles, rules, budgets and original
+      import history are not included.
+    </p>
+  </section>
 </dialog>
 
 <style>

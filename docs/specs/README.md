@@ -13,7 +13,7 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 | [Categories and labels](classification.md) | Core and import review implemented; browser verification blocked | Single category, optional labels, setup, management, bulk assignment, filters, import drafts and counted deletion; proposed insights |
 | [Local labeling rules](labeling-rules.md) | Implemented; browser verification blocked | Deterministic rules, suggestions, conflicts, historical previews and target lifecycle |
 | [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |
-| [Entry export and reimport](data-portability.md) | Deferred; not implemented | Portable CSV copies, native reimport, boundary with full backups |
+| [Entry export and reimport](data-portability.md) | CSV implemented; browser verification pending | Per-user CSV snapshots and native restore through import review; settings JSON proposed |
 | [Monthly budgets](planning.md) | Implemented; browser verification blocked | Category targets, savings reservations, named expected income, receipt matching, copy and year context |
 
 Implemented means the behavior exists in source; it does not imply completed

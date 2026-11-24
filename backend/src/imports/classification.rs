@@ -34,6 +34,11 @@ pub(super) async fn validate(
                     "Provide classification drafts only for valid CSV record numbers.",
                 )
             })?;
+        if row.row.portable.is_some() {
+            return Err(AppError::invalid(
+                "Coinz exports restore their saved classification. Edit it after importing.",
+            ));
+        }
         if input
             .selected_records
             .as_ref()

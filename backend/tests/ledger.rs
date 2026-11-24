@@ -4224,3 +4224,404 @@ async fn archiving_rule_targets_pauses_without_resuming_on_restore() {
         json!([])
     );
 }
+
+impl Client {
+    async fn export_csv(&self) -> (StatusCode, String) {
+        let mut request = Request::builder().uri("/api/exports/entries.csv");
+        if let Some(cookie) = &self.cookie {
+            request = request.header("cookie", cookie);
+        }
+        let response = self
+            .app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        if status == StatusCode::OK {
+            assert_eq!(
+                response.headers()["content-type"],
+                "text/csv; charset=utf-8"
+            );
+            assert!(
+                response.headers()["content-disposition"]
+                    .to_str()
+                    .unwrap()
+                    .contains("attachment")
+            );
+        }
+        (
+            status,
+            String::from_utf8(
+                response
+                    .into_body()
+                    .collect()
+                    .await
+                    .unwrap()
+                    .to_bytes()
+                    .to_vec(),
+            )
+            .unwrap(),
+        )
+    }
+}
+
+fn csv_records(input: &str) -> Vec<Vec<String>> {
+    csv::Reader::from_reader(input.as_bytes())
+        .records()
+        .map(|r| r.unwrap().iter().map(str::to_owned).collect())
+        .collect()
+}
+
+#[tokio::test]
+async fn portable_csv_round_trip_all_pages_sources_classification_and_exact_money() {
+    let origin = Harness::new().await;
+    let mut alice = origin.client("alice").await;
+    let mut bob = origin.client("bob").await;
+    bob.entry(None, "2026-11-01", "9", "expense").await;
+    let first_source = alice.source("Same display name").await;
+    let second_source = alice.source("Same display name").await;
+    let owner: String = sqlx::query_scalar("SELECT id FROM users WHERE username='alice'")
+        .fetch_one(&origin.pool)
+        .await
+        .unwrap();
+    let mut ids = Vec::new();
+    let mut tx = origin.pool.begin().await.unwrap();
+    for i in 0..1005 {
+        let id = uuid::Uuid::new_v4().to_string();
+        let source = match i {
+            0 => Some(&first_source),
+            1 => Some(&second_source),
+            _ => None,
+        };
+        let description = if i == 0 {
+            "Merchant, \"Example\"\nSecond line".to_owned()
+        } else if i == 2 || i == 3 {
+            "Identical legitimate purchase".to_owned()
+        } else {
+            format!("Portable synthetic {i}")
+        };
+        sqlx::query("INSERT INTO transactions(id,user_id,source_id,date,description,amount_cents,origin) VALUES(?,?,?,?,?,?,?)")
+            .bind(&id).bind(&owner).bind(source).bind(if i < 4 || i % 2 == 0 {"2026-11-04"}else{"2025-12-31"})
+            .bind(description).bind(if i == 1 {i64::MAX}else{-1234_i64}).bind(if i == 1 {"csv"}else{"manual"}).execute(&mut *tx).await.unwrap();
+        ids.push(id);
+    }
+    tx.commit().await.unwrap();
+    let category = alice
+        .call(
+            "POST",
+            "/api/classification",
+            Some(json!({"kind":"category","name":"Dining","color":"sage"})),
+        )
+        .await
+        .1;
+    let label = alice
+        .call(
+            "POST",
+            "/api/classification",
+            Some(json!({"kind":"label","name":"Trip, \"Friends\"; 📚","color":"blue"})),
+        )
+        .await
+        .1;
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/transactions/classify",
+                Some(json!({"ids":[ids[0]],"action":"set_category","category_id":category["id"]}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/transactions/classify",
+                Some(json!({"ids":[ids[0]],"action":"add_labels","label_ids":[label["id"]]}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let (status, csv) = alice.export_csv().await;
+    assert_eq!(status, StatusCode::OK);
+    let mut original = csv_records(&csv);
+    assert_eq!(original.len(), 1005);
+    assert!(original.iter().all(|r| r[2] != "Synthetic entry"));
+    assert!(original.iter().any(|r| r[1] == "92233720368547758.07"));
+    assert!(
+        original
+            .iter()
+            .any(|r| r[2] == "Merchant, \"Example\"\nSecond line"
+                && r[3] == "Dining"
+                && r[4].contains("Friends"))
+    );
+    assert_eq!(
+        original
+            .iter()
+            .filter(|r| r[2] == "Identical legitimate purchase")
+            .count(),
+        2
+    );
+    let destination = Harness::new().await;
+    let mut restored = destination.client("alice").await;
+    let existing_category = restored
+        .call(
+            "POST",
+            "/api/classification",
+            Some(json!({"kind":"category","name":"Dining","color":"clay"})),
+        )
+        .await
+        .1;
+    assert_eq!(
+        restored
+            .call(
+                "PUT",
+                &format!(
+                    "/api/classification/{}",
+                    existing_category["id"].as_str().unwrap()
+                ),
+                Some(json!({"name":"Dining","color":"clay","archived":true}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let input = json!({"csv":csv,"filename":"coinz-entries.csv"});
+    let (status, preview) = restored
+        .call("POST", "/api/imports/restore/preview", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["rows"].as_array().unwrap().len(), 1005);
+    assert!(
+        preview["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["status"] == "new")
+    );
+    let (status, outcome) = restored
+        .call("POST", "/api/imports/restore/commit", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{outcome}");
+    assert_eq!(outcome["added"], 1005);
+    assert_eq!(outcome["income_cents"], i64::MAX.to_string());
+    assert_eq!(
+        restored.call("GET", "/api/classification", None).await.1["categories"][0]["archived"],
+        true
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM import_records WHERE external_id<>''")
+            .fetch_one(&destination.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    let (status, exported_again) = restored.export_csv().await;
+    assert_eq!(status, StatusCode::OK);
+    let mut round_trip = csv_records(&exported_again);
+    original.sort();
+    round_trip.sort();
+    assert_eq!(original, round_trip);
+    assert_eq!(
+        restored
+            .call("GET", "/api/sources", None)
+            .await
+            .1
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let (status, repeated) = restored
+        .call("POST", "/api/imports/restore/commit", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{repeated}");
+    assert_eq!(repeated["added"], 0);
+    assert_eq!(repeated["known"], 1005);
+    // A fresh export with different row ordering also retains portable identity.
+    assert_eq!(
+        restored
+            .call(
+                "POST",
+                "/api/imports/restore/commit",
+                Some(json!({"csv":exported_again}))
+            )
+            .await
+            .1["added"],
+        0
+    );
+    let target: String =
+        sqlx::query_scalar("SELECT transaction_id FROM portable_entry_refs WHERE reference=?")
+            .bind(&ids[0])
+            .fetch_one(&destination.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        restored
+            .call(
+                "PATCH",
+                &format!("/api/transactions/{target}"),
+                Some(json!({"field":"description","value":"Preserved local edit"}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let (status, conflict) = restored
+        .call("POST", "/api/imports/restore/commit", Some(input))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{conflict}");
+    assert_eq!(csv_records(&restored.export_csv().await.1).len(), 1005);
+}
+
+#[tokio::test]
+async fn portable_csv_is_owned_atomic_and_uses_existing_duplicate_review() {
+    let harness = Harness::new().await;
+    let mut alice = harness.client("alice").await;
+    let mut bob = harness.client("bob").await;
+    let id = alice.entry(None, "2026-11-01", "12.34", "expense").await;
+    let source = alice.source("Private to Alice").await;
+    alice
+        .call(
+            "PATCH",
+            &format!("/api/transactions/{id}"),
+            Some(json!({"field":"source","value":source})),
+        )
+        .await;
+    let csv = alice.export_csv().await.1;
+    // A native snapshot may exceed the ordinary JSON extractor's 2 MiB default.
+    let larger_csv = format!("{csv}{}", "\n".repeat(2 * 1024 * 1024));
+    let (status, large_preview) = alice
+        .call(
+            "POST",
+            "/api/imports/restore/preview",
+            Some(json!({"csv":larger_csv})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{large_preview}");
+    assert_eq!(large_preview["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/imports/preview",
+                Some(json!({"csv":larger_csv}))
+            )
+            .await
+            .0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    let guest = Client {
+        app: harness.app.clone(),
+        cookie: None,
+        csrf: None,
+    };
+    assert_eq!(guest.export_csv().await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        bob.send(
+            "POST",
+            "/api/imports/restore/commit",
+            Some(json!({"csv":csv})),
+            false,
+            ORIGIN
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/imports/restore/commit",
+                Some(json!({"csv":csv}))
+            )
+            .await
+            .1["known"],
+        1
+    );
+    let (status, imported) = bob
+        .call(
+            "POST",
+            "/api/imports/restore/commit",
+            Some(json!({"csv":csv})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{imported}");
+    assert_eq!(imported["added"], 1);
+    let bob_entries = bob.call("GET", "/api/entries", None).await.1;
+    assert_ne!(bob_entries["entries"][0]["id"], id);
+    assert_ne!(bob_entries["entries"][0]["source_id"], source);
+    let mut rows = csv_records(&csv);
+    rows[0][6] = uuid::Uuid::new_v4().to_string();
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    writer
+        .write_record(coinz::imports::portable::HEADERS)
+        .unwrap();
+    writer.write_record(&rows[0]).unwrap();
+    let overlap = String::from_utf8(writer.into_inner().unwrap()).unwrap();
+    let (status, preview) = bob
+        .call(
+            "POST",
+            "/api/imports/restore/preview",
+            Some(json!({"csv":overlap})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["rows"][0]["status"], "review");
+    assert_eq!(
+        bob.call(
+            "POST",
+            "/api/imports/restore/commit",
+            Some(json!({"csv":overlap}))
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, matched) = bob.call("POST", "/api/imports/restore/commit", Some(json!({"csv":overlap,"decisions":[{"record":2,"action":"match","transaction_id":bob_entries["entries"][0]["id"]}]}))).await;
+    assert_eq!(status, StatusCode::OK, "{matched}");
+    assert_eq!(matched["matched"], 1);
+    // Invalid selected rows roll back all new entries, vocabulary and sources.
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    writer
+        .write_record(coinz::imports::portable::HEADERS)
+        .unwrap();
+    rows[0][2] = "Atomic first".into();
+    rows[0][3] = "Not created on failure".into();
+    rows[0][5] = "New source".into();
+    rows[0][6] = uuid::Uuid::new_v4().to_string();
+    rows[0][7] = uuid::Uuid::new_v4().to_string();
+    writer.write_record(&rows[0]).unwrap();
+    rows[0][6] = uuid::Uuid::new_v4().to_string();
+    rows[0][4] = "not a label array".into();
+    writer.write_record(&rows[0]).unwrap();
+    let invalid = String::from_utf8(writer.into_inner().unwrap()).unwrap();
+    let sources_before = bob.call("GET", "/api/sources", None).await.1;
+    assert_eq!(
+        bob.call(
+            "POST",
+            "/api/imports/restore/commit",
+            Some(json!({"csv":invalid}))
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        bob.call("GET", "/api/sources", None).await.1,
+        sources_before
+    );
+    assert_eq!(
+        bob.call("GET", "/api/entries", None).await.1["entries"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(alice.export_csv().await.1, csv);
+}

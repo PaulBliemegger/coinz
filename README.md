@@ -56,28 +56,21 @@ the selected month.
 
 ### Verification status
 
-Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 54
-Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
-startup because the agent sandbox denies local sockets. The latest supplied
-local run executed all 42 desktop/phone browser journeys: 35 passed and 7 failed.
-The trend-category label fix was subsequently verified through the owner-authorized
-synthetic test browser at desktop and phone sizes, and the owner confirmed both
-complete Insights Playwright journeys passed (2 passed in 11.1s). The import
-row locator fix also passed the owner's focused desktop CSV journey. Phone CSV
-mapping now preserves its interactive table headers instead of inheriting global
-header-hiding styles; all three mappings and the synthetic preview were verified
-in the browser at phone size, with desktop layout checked too. The owner confirmed
-all three affected phone import journeys passed. The remaining overlapping-import
-failure was an ambiguous success-status assertion during refresh; it now selects
-the specific removal message. A full local suite rerun is pending. Browser checks
-remain blocking.
-An offline Chromium launch was also unavailable.
-See [agent test permissions](docs/agent-testing.md).
-The frontend checks ran with Node 26.13.1 and reported an engine warning;
-the supported project version remains Node 24.22.3.
-An earlier Docker image built successfully; the current revision has not been
-deployed or verified against a running container by the agent. This is an early
-development version.
+Verification snapshot (2026-11-24): the owner confirmed the previous full
+`make check` and all 42 desktop/phone browser journeys passed, followed by a
+successful GitHub run. The CSV portability slice adds parser/API tests and two
+browser journeys. Formatting/lint, all 57 Rust tests, frontend type/unit checks and production
+builds passed for this slice; enhanced ownership, archived-assignment and large
+request-envelope tests passed too. The two new browser journeys still need an
+owner-run local check. Agent-run Playwright cannot start its local server because
+this sandbox denies sockets.
+See [agent test permissions](docs/agent-testing.md). The shared browser can be
+used only for the owner-authorized synthetic development session.
+
+Frontend checks in this session use Node 26.13.1 and report an engine warning;
+the supported project version remains Node 24.22.3. The current slice has not
+been verified in a deployed container or on the Pi. Private deployment remains
+an explicit owner action.
 
 ### Migration checksum errors
 
@@ -247,6 +240,21 @@ or hook installation has been performed automatically.
 `Cargo.lock` is tracked for this application. Rust checks and production builds use
 `--locked` so they use the reviewed dependency resolution. Include lockfile changes
 when intentionally updating Rust dependencies.
+
+## Portable entry copies
+
+In **User menu → Settings → Your data**, choose **Export all entries** to download your complete entries
+CSV across every date/page. Reimport it through **Import CSV**: coinz recognizes
+its own header and restores saved categories, labels, optional sources and entry
+origins without a profile. Preview first and resolve duplicate candidates before
+confirmation. Repeating a snapshot adds no copies; conflicting local edits are
+never overwritten. Limits: 50,000 entries / 16 MiB, with an explicit error rather
+than a partial export above either limit.
+
+Missing classification names are created with default appearance; existing setup
+is retained. CSV is an entry copy, not a database backup: original import history,
+bank evidence, profiles, rules and budgets are omitted. Versioned settings
+export/import is the next slice. See [the portability contract](docs/specs/data-portability.md).
 
 ## Tests and checks
 

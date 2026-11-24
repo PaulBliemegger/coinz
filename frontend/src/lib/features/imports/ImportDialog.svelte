@@ -40,6 +40,7 @@
     onimported: (result: ImportOutcome, source: string) => Promise<void>;
   } = $props();
   const formId = $props.id();
+  let nativeFile = $state(false);
   let dialog: HTMLDialogElement;
   let previewHeading = $state<HTMLHeadingElement>();
   let choices = $state<Source[]>([]);
@@ -155,7 +156,7 @@
     const request = ++compatibilityRequest;
     compatible = false;
     compatibilityError = '';
-    if (chosen && selectedFile) void checkFile(selectedFile, chosen, request);
+    if (!nativeFile && chosen && selectedFile) void checkFile(selectedFile, chosen, request);
     else checkingFile = false;
     return () => {
       compatibilityRequest++;
@@ -249,7 +250,7 @@
     try {
       const plan = await api<RuleSuggestions>('/rules/suggest', 'POST', {
         description: value.trim(),
-        source_id: sourceId || null,
+        source_id: nativeFile ? null : sourceId || null,
       });
       if (generation !== reviewGeneration || suggestionRequests[record] !== request) return;
       if (plan.revision !== rulesRevision)
@@ -274,15 +275,15 @@
     await tick();
     document.getElementById(`import-description-${record}`)?.focus();
   }
-  async function review(chosen: ImportProfile) {
+  async function review(chosen: ImportProfile | null) {
     const result = await api<{ rows: ImportRow[]; rules_revision: number }>(
-      '/imports/preview',
+      nativeFile ? '/imports/restore/preview' : '/imports/preview',
       'POST',
       {
-        source_id: sourceId || null,
+        source_id: nativeFile ? null : sourceId || null,
         csv,
-        profile_id: chosen.id,
-        profile_revision: chosen.revision,
+        profile_id: chosen?.id,
+        profile_revision: chosen?.revision,
       },
     );
     ++reviewGeneration;
@@ -351,6 +352,30 @@
     }
   }
 
+  async function chooseFile(chosen: File | null) {
+    file = chosen;
+    nativeFile = false;
+    csv = '';
+    error = '';
+    if (!chosen) return;
+    busy = true;
+    try {
+      const header = (await chosen.slice(0, 512).text()).split(/\r?\n/, 1)[0];
+      if (
+        file === chosen &&
+        header === 'date,amount,description,category,labels,source,entry_ref,source_ref,origin'
+      ) {
+        nativeFile = true;
+        profileId = '';
+        sourceId = '';
+        compatibilityError = '';
+      }
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      busy = false;
+    }
+  }
   async function preview(event: SubmitEvent) {
     event.preventDefault();
     if (!file) return;
@@ -358,9 +383,14 @@
     busy = true;
     csv = '';
     try {
-      if (file.size > 256 * 1024) throw new Error('CSV files must be at most 256 KiB.');
+      if (file.size > (nativeFile ? 16 * 1024 * 1024 : 256 * 1024))
+        throw new Error(
+          nativeFile
+            ? 'Coinz exports must be at most 16 MiB.'
+            : 'CSV files must be at most 256 KiB.',
+        );
       csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
-      if (profile) await review(profile);
+      if (nativeFile || profile) await review(profile);
       else mapping = true;
     } catch (cause) {
       fail(cause);
@@ -374,22 +404,26 @@
     busy = true;
     error = '';
     try {
-      const result = await api<ImportOutcome>('/imports/commit', 'POST', {
-        source_id: sourceId || null,
-        csv,
-        filename: file?.name,
-        profile_id: profile?.id,
-        profile_revision: profile?.revision,
-        descriptions: Object.fromEntries(
-          selection.additions
-            .filter((row) => descriptions[row.record] !== undefined)
-            .map((row) => [row.record, descriptions[row.record]]),
-        ),
-        rules_revision: rulesRevision,
-        classifications: selectedClassificationDrafts(classifications, selection.additions),
-        selected_records: selection.records,
-        decisions: selection.decisions,
-      });
+      const result = await api<ImportOutcome>(
+        nativeFile ? '/imports/restore/commit' : '/imports/commit',
+        'POST',
+        {
+          source_id: nativeFile ? null : sourceId || null,
+          csv,
+          filename: file?.name,
+          profile_id: nativeFile ? undefined : profile?.id,
+          profile_revision: nativeFile ? undefined : profile?.revision,
+          descriptions: Object.fromEntries(
+            selection.additions
+              .filter((row) => descriptions[row.record] !== undefined)
+              .map((row) => [row.record, descriptions[row.record]]),
+          ),
+          rules_revision: nativeFile ? undefined : rulesRevision,
+          classifications: selectedClassificationDrafts(classifications, selection.additions),
+          selected_records: selection.records,
+          decisions: selection.decisions,
+        },
+      );
       // Import succeeded. Refresh errors must never invite a duplicate submission.
       dialog.close();
       await onimported(result, sourceId);
@@ -435,7 +469,9 @@
   {#if mapping}
     <div class="review-scroll">
       <p class="muted">
-        {file?.name} · {choices.find((source) => source.id === sourceId)?.name ?? 'No source'}
+        {file?.name} · {nativeFile
+          ? 'Saved per-entry sources'
+          : (choices.find((source) => source.id === sourceId)?.name ?? 'No source')}
       </p>
       <ImportMapping
         {csv}
@@ -474,115 +510,120 @@
       </form>
     {:else}
       <form onsubmit={preview}>
-        <details>
-          <summary>Optional source</summary>
-          <label>
-            <span id={`${formId}-source`}>Import source</span><select
-              aria-labelledby={`${formId}-source`}
-              bind:value={sourceId}
+        {#if !nativeFile}<details>
+            <summary>Optional source</summary>
+            <label>
+              <span id={`${formId}-source`}>Import source</span><select
+                aria-labelledby={`${formId}-source`}
+                bind:value={sourceId}
+                disabled={working}
+              >
+                <option value="">No source</option>{#each choices as source (source.id)}<option
+                    value={source.id}
+                  >
+                    {source.name}
+                  </option>{/each}
+              </select>
+            </label>
+            <button
+              type="button"
+              class="button quiet"
               disabled={working}
+              onclick={() => (newSource = true)}
             >
-              <option value="">No source</option>{#each choices as source (source.id)}<option
-                  value={source.id}
-                >
-                  {source.name}
-                </option>{/each}
-            </select>
-          </label>
-          <button
-            type="button"
-            class="button quiet"
-            disabled={working}
-            onclick={() => (newSource = true)}
-          >
-            + New source
-          </button>
-        </details>
+              + New source
+            </button>
+          </details>{/if}
         <label>
           CSV file<input
             type="file"
             accept=".csv,text/csv"
             required={!file}
             disabled={working}
-            onchange={(event) => {
-              file = event.currentTarget.files?.[0] ?? null;
-              csv = '';
-              error = '';
-            }}
+            onchange={(event) => void chooseFile(event.currentTarget.files?.[0] ?? null)}
           />
         </label>
         {#if file}<p class="muted">Selected file: {file.name}</p>{/if}
-        <p class="muted">
-          Up to 256 KiB and 1,000 records. Preview first; nothing is added until you confirm.
-          Sources are optional metadata and hold no bank balance.
-        </p>
-        <label>
-          <span id={`${formId}-profile`}>Import profile</span><select
-            aria-labelledby={`${formId}-profile`}
-            bind:value={profileId}
-            disabled={working || loadingProfiles}
-          >
-            <option value="">Create a new profile</option>
-            {#each profiles as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
-          </select>
-        </label>
-        {#if loadingProfiles}<p role="status">Loading profiles…</p>{/if}
-        <button
-          type="button"
-          class="button quiet"
-          disabled={working || loadingProfiles}
-          onclick={loadProfiles}
-        >
-          Reload profiles
-        </button>
-        {#if profile}<p class="muted">
-            Date: {profile.layout.date} · Amount: {profile.layout.amount} · Description: {profile
-              .layout.description}
+        {#if nativeFile}<p class="notice" role="status">
+            Coinz export detected. Restore saved categories, labels and sources without a profile.
+            Up to 16 MiB and 50,000 entries. Missing names are created; existing setup is retained.
+            Matching keeps the existing entry unchanged.
           </p>
+        {:else}<p class="muted">
+            Up to 256 KiB and 1,000 records. Preview first; nothing is added until you confirm.
+            Sources are optional metadata and hold no bank balance.
+          </p>
+          <label>
+            <span id={`${formId}-profile`}>Import profile</span><select
+              aria-labelledby={`${formId}-profile`}
+              bind:value={profileId}
+              disabled={working || loadingProfiles}
+            >
+              <option value="">Create a new profile</option>
+              {#each profiles as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
+            </select>
+          </label>
+          {#if loadingProfiles}<p role="status">Loading profiles…</p>{/if}
           <button
             type="button"
             class="button quiet"
-            disabled={working || !file}
-            onclick={async () => {
-              busy = true;
-              error = '';
-              try {
-                if (!file || file.size > 256 * 1024)
-                  throw new Error('CSV files must be at most 256 KiB.');
-                csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
-                mapping = true;
-              } catch (cause) {
-                fail(cause);
-              } finally {
-                busy = false;
-              }
-            }}
+            disabled={working || loadingProfiles}
+            onclick={loadProfiles}
           >
-            Check column mapping
+            Reload profiles
           </button>
-          <button
-            type="button"
-            class="button quiet"
-            disabled={working}
-            onclick={() => (profileId = '')}
-          >
-            Create a new profile
-          </button>
+          {#if profile}<p class="muted">
+              Date: {profile.layout.date} · Amount: {profile.layout.amount} · Description: {profile
+                .layout.description}
+            </p>
+            <button
+              type="button"
+              class="button quiet"
+              disabled={working || !file}
+              onclick={async () => {
+                busy = true;
+                error = '';
+                try {
+                  if (!file || file.size > 256 * 1024)
+                    throw new Error('CSV files must be at most 256 KiB.');
+                  csv = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+                  mapping = true;
+                } catch (cause) {
+                  fail(cause);
+                } finally {
+                  busy = false;
+                }
+              }}
+            >
+              Check column mapping
+            </button>
+            <button
+              type="button"
+              class="button quiet"
+              disabled={working}
+              onclick={() => (profileId = '')}
+            >
+              Create a new profile
+            </button>
+          {/if}
+          {#if compatibilityError}<p class="error" role="alert">{compatibilityError}</p>{/if}
+          <p class="muted">
+            Saved mappings are checked against this file before review. Saved profiles and sources
+            remain if you cancel.
+          </p>
         {/if}
-        {#if compatibilityError}<p class="error" role="alert">{compatibilityError}</p>{/if}
-        <p class="muted">
-          Saved mappings are checked against this file before review. Saved profiles and sources
-          remain if you cancel.
-        </p>
         <button
           class="button primary"
           disabled={working ||
-            loadingProfiles ||
-            checkingFile ||
-            (profile !== null && !compatible) ||
+            (!nativeFile &&
+              (loadingProfiles || checkingFile || (profile !== null && !compatible))) ||
             !file}
         >
-          {busy || checkingFile ? 'Reading…' : profile ? 'Review entries' : 'Map columns'}
+          {busy || checkingFile
+            ? 'Reading…'
+            : nativeFile || profile
+              ? 'Review entries'
+              : 'Map columns'}
         </button>
       </form>
     {/if}
@@ -627,7 +668,7 @@
           /> Select new entries
         </label>
       </div>
-      {#if selection.additions.length}
+      {#if selection.additions.length && !nativeFile}
         <section
           class="import-classification-bulk"
           aria-label="Classify selected additions"
@@ -770,14 +811,14 @@
             </button>
           </div>
         </div>{/if}
-      <button
-        type="button"
-        class="button quiet"
-        disabled={working}
-        onclick={() => leaveReview('mapping')}
-      >
-        Check column mapping
-      </button>
+      {#if !nativeFile}<button
+          type="button"
+          class="button quiet"
+          disabled={working}
+          onclick={() => leaveReview('mapping')}
+        >
+          Check column mapping
+        </button>{/if}
       {#if editingRecords.length}<p role="status">
           Finish or cancel pending description changes before importing.
         </p>{/if}

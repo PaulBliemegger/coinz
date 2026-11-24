@@ -193,3 +193,12 @@ when source is null. Unspecified imports only auto-recognize exact file/row
 repeats; cross-file matches stay suggestions. Explicit sources retain stable-ID
 matching. No implicit source rows are created. Receipt link changes advance
 transaction edit revisions only when the association actually changes.
+
+Portable entry CSV uses the existing import parser/review/commit flow with an
+explicit native header. Migration 0013 stores per-owner entry/source reference
+aliases separately from bank evidence, allowing fresh-install IDs without losing
+portable identity. Export reads all owned entries and classification in one
+snapshot. Native restoration resolves/creates names and sources under the import
+write lock, preserves origin and saved assignments, and protects current edits by
+comparing reference matches to live fields. Normal bank import limits and routes
+remain unchanged; bounded native restore endpoints accept larger snapshots.
