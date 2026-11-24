@@ -10,7 +10,9 @@ account balances. Building and learning are also part of the project's value.
 ## Current implementation
 
 Local user creation, login/logout, isolated private data, manual income/expenses,
-editing/deleting entries, a home dashboard with monthly/yearly spending, a
+editing/deleting entries, a home dashboard with monthly/yearly spending and a
+monthly category spending breakdown linking to Entries, an Insights page with
+the full monthly category report, rolling income/expense and category trends, a
 paginated Entries workspace with period/search/category/label filters, categories
 and coloured labels with setup, management, counted deletion and import-review
 drafts, local labeling rules with previewed history application, exact money handling,
@@ -79,7 +81,9 @@ and secondary. Setup is skippable; recording never depends on organization.
 [Categories and labels](specs/classification.md) owns management, assignment,
 filtering, import-review drafts and overlap semantics.
 [Local labeling rules](specs/labeling-rules.md) owns deterministic suggestions,
-conflicts and explicit history application. Richer insight reports remain deferred.
+conflicts and explicit history application. Home's first category insight and
+the Insights page are defined in [reporting](specs/reporting.md); automatic period comparisons,
+label analysis and richer reports remain proposed.
 
 Transfers between the owner's accounts should ultimately be excluded from income
 and spending, while linked refunds reduce the relevant spending. Dedicated types

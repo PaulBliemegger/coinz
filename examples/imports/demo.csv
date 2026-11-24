@@ -1,17 +1,107 @@
 date,description,amount,external_id
-2026-10-01,Example employer,2400.00,oct-001
-2026-10-02,Example rent,-800.00,oct-002
-2026-10-05,Example groceries,-62.35,oct-003
-2026-10-07,Example coffee,-3.50,oct-004
-2026-10-07,Example coffee,-3.50,oct-005
-2026-10-12,"Example books, stationery",-28.90,oct-006
-2026-10-18,Example train,-49.00,oct-007
-2026-10-25,Example subscription,-12.99,oct-008
-2026-11-01,Example employer,2400.00,nov-001
-2026-11-02,Example rent,-800.00,nov-002
-2026-11-04,Example groceries,-75.20,nov-003
-2026-11-07,Example coffee,-3.50,nov-004
-2026-11-07,Example coffee,-3.50,nov-005
-2026-11-12,Example restaurant,-48.60,nov-006
-2026-11-18,Example bicycle repair,-120.00,nov-007
-2026-11-25,Example subscription,-12.99,nov-008
+2026-09-01,SEPA CREDIT Studio North payroll / monthly salary,2400.00,demo-v2-2026-09-001
+2026-09-02,SEPA DD Lindenhof Property / Rent and service charges,-820.00,demo-v2-2026-09-002
+2026-09-03,SEPA DD Stadtenergie / Electricity monthly instalment,-66.00,demo-v2-2026-09-003
+2026-09-03,POS Stadtmarkt Lebensmittel / Weekly groceries 1,-48.35,demo-v2-2026-09-004
+2026-09-04,SEPA DD Fibreline / Home internet,-29.90,demo-v2-2026-09-005
+2026-09-05,CARD Pocket Mobile / Monthly plan,-14.90,demo-v2-2026-09-006
+2026-09-05,CARD Aktiv Fitness / Membership,-24.90,demo-v2-2026-09-007
+2026-09-05,POS Backstube am Eck / Bread and rolls,-5.40,demo-v2-2026-09-008
+2026-09-06,CARD Streambox subscription / Monthly streaming,-12.99,demo-v2-2026-09-009
+2026-09-06,CARD Cloudnote subscription / Notes storage,-4.99,demo-v2-2026-09-010
+2026-09-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-09-011
+2026-09-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-09-012
+2026-09-08,POS Apotheke am Park / Pharmacy essentials,-8.50,demo-v2-2026-09-013
+2026-09-09,POS Gruene Schere / Haircut,-29.00,demo-v2-2026-09-014
+2026-09-10,CARD Stadtverkehr / Monthly transport pass,-51.00,demo-v2-2026-09-015
+2026-09-10,POS Stadtmarkt Lebensmittel / Weekly groceries 2,-62.80,demo-v2-2026-09-016
+2026-09-11,CARD Bergblick Hotel / Salzburg weekend stay,-248.00,demo-v2-2026-09-017
+2026-09-11,CARD Westbahn / Salzburg return train ticket,-49.80,demo-v2-2026-09-018
+2026-09-12,POS Trattoria Linden / Dinner with friends,-42.60,demo-v2-2026-09-019
+2026-09-12,POS Backstube am Eck / Bread and rolls,-5.50,demo-v2-2026-09-020
+2026-09-12,POS Altstadt Bistro Salzburg / Weekend dinner,-57.60,demo-v2-2026-09-021
+2026-09-12,CARD Stadtmuseum Salzburg / Two admissions,-28.00,demo-v2-2026-09-022
+2026-09-13,"POS Papierhaus / Books, cards and stationery",-23.40,demo-v2-2026-09-023
+2026-09-13,POS Reiseproviant Salzburg / Snacks for the train,-11.70,demo-v2-2026-09-024
+2026-09-14,POS Lichtspiel Kino / Cinema ticket,-14.50,demo-v2-2026-09-025
+2026-09-17,POS Morgenrot coffee / Cappuccino and pastry,-6.20,demo-v2-2026-09-026
+2026-09-17,POS Stadtmarkt Lebensmittel / Weekly groceries 3,-39.45,demo-v2-2026-09-027
+2026-09-18,POS Radwerk / Bicycle service and brake pads,-12.50,demo-v2-2026-09-028
+2026-09-19,POS Kuechenfenster / Lunch menu,-13.90,demo-v2-2026-09-029
+2026-09-19,POS Backstube am Eck / Bread and rolls,-5.60,demo-v2-2026-09-030
+2026-09-21,POS Marktstand Blumen / Birthday flowers,-18.00,demo-v2-2026-09-031
+2026-09-22,CARD Kulturhaus / Concert ticket,-32.00,demo-v2-2026-09-032
+2026-09-24,POS Stadtmarkt / Household cleaning supplies,-15.45,demo-v2-2026-09-033
+2026-09-24,POS Stadtmarkt Lebensmittel / Weekly groceries 4,-55.20,demo-v2-2026-09-034
+2026-09-26,POS Nudelhaus / Takeaway dinner,-18.90,demo-v2-2026-09-035
+2026-09-26,POS Backstube am Eck / Bread and rolls,-5.70,demo-v2-2026-09-036
+2026-09-28,CARD Stadtbibliothek / Annual library fee,-24.00,demo-v2-2026-09-037
+2026-10-01,SEPA CREDIT Studio North payroll / monthly salary,2400.00,demo-v2-2026-10-001
+2026-10-02,SEPA DD Lindenhof Property / Rent and service charges,-820.00,demo-v2-2026-10-002
+2026-10-03,SEPA DD Stadtenergie / Electricity monthly instalment,-66.00,demo-v2-2026-10-003
+2026-10-03,POS Stadtmarkt Lebensmittel / Weekly groceries 1,-49.35,demo-v2-2026-10-004
+2026-10-04,SEPA DD Fibreline / Home internet,-29.90,demo-v2-2026-10-005
+2026-10-05,CARD Pocket Mobile / Monthly plan,-14.90,demo-v2-2026-10-006
+2026-10-05,CARD Aktiv Fitness / Membership,-24.90,demo-v2-2026-10-007
+2026-10-05,POS Backstube am Eck / Bread and rolls,-5.40,demo-v2-2026-10-008
+2026-10-06,CARD Streambox subscription / Monthly streaming,-12.99,demo-v2-2026-10-009
+2026-10-06,CARD Cloudnote subscription / Notes storage,-4.99,demo-v2-2026-10-010
+2026-10-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-10-011
+2026-10-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-10-012
+2026-10-08,POS Apotheke am Park / Pharmacy essentials,-8.50,demo-v2-2026-10-013
+2026-10-09,POS Gruene Schere / Haircut,-29.00,demo-v2-2026-10-014
+2026-10-10,CARD Stadtverkehr / Monthly transport pass,-51.00,demo-v2-2026-10-015
+2026-10-10,POS Stadtmarkt Lebensmittel / Weekly groceries 2,-64.80,demo-v2-2026-10-016
+2026-10-12,POS Trattoria Linden / Dinner with friends,-42.60,demo-v2-2026-10-017
+2026-10-12,POS Backstube am Eck / Bread and rolls,-5.50,demo-v2-2026-10-018
+2026-10-13,"POS Papierhaus / Books, cards and stationery",-23.40,demo-v2-2026-10-019
+2026-10-14,POS Lichtspiel Kino / Cinema ticket,-14.50,demo-v2-2026-10-020
+2026-10-15,CARD Nordlicht Outfitters / Rain jacket,-89.90,demo-v2-2026-10-021
+2026-10-17,POS Morgenrot coffee / Cappuccino and pastry,-6.20,demo-v2-2026-10-022
+2026-10-17,POS Stadtmarkt Lebensmittel / Weekly groceries 3,-42.45,demo-v2-2026-10-023
+2026-10-18,POS Radwerk / Bicycle service and brake pads,-74.00,demo-v2-2026-10-024
+2026-10-19,POS Kuechenfenster / Lunch menu,-13.90,demo-v2-2026-10-025
+2026-10-19,POS Backstube am Eck / Bread and rolls,-5.60,demo-v2-2026-10-026
+2026-10-21,POS Marktstand Blumen / Birthday flowers,-18.00,demo-v2-2026-10-027
+2026-10-22,CARD Kulturhaus / Concert ticket,-32.00,demo-v2-2026-10-028
+2026-10-24,POS Stadtmarkt / Household cleaning supplies,-15.45,demo-v2-2026-10-029
+2026-10-24,POS Stadtmarkt Lebensmittel / Weekly groceries 4,-59.20,demo-v2-2026-10-030
+2026-10-26,POS Nudelhaus / Takeaway dinner,-18.90,demo-v2-2026-10-031
+2026-10-26,POS Backstube am Eck / Bread and rolls,-5.70,demo-v2-2026-10-032
+2026-10-27,POS Hausbedarf / Replacement kettle,-34.95,demo-v2-2026-10-033
+2026-10-28,POS Buchwinkel / Paperback novel,-12.90,demo-v2-2026-10-034
+2026-11-01,SEPA CREDIT Studio North payroll / monthly salary,2400.00,demo-v2-2026-11-001
+2026-11-02,SEPA DD Lindenhof Property / Rent and service charges,-820.00,demo-v2-2026-11-002
+2026-11-03,SEPA DD Stadtenergie / Electricity monthly instalment,-66.00,demo-v2-2026-11-003
+2026-11-03,POS Stadtmarkt Lebensmittel / Weekly groceries 1,-50.35,demo-v2-2026-11-004
+2026-11-04,SEPA DD Fibreline / Home internet,-29.90,demo-v2-2026-11-005
+2026-11-05,CARD Pocket Mobile / Monthly plan,-14.90,demo-v2-2026-11-006
+2026-11-05,CARD Aktiv Fitness / Membership,-24.90,demo-v2-2026-11-007
+2026-11-05,POS Backstube am Eck / Bread and rolls,-5.40,demo-v2-2026-11-008
+2026-11-06,CARD Streambox subscription / Monthly streaming,-12.99,demo-v2-2026-11-009
+2026-11-06,CARD Cloudnote subscription / Notes storage,-4.99,demo-v2-2026-11-010
+2026-11-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-11-011
+2026-11-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-11-012
+2026-11-08,POS Apotheke am Park / Pharmacy essentials,-8.50,demo-v2-2026-11-013
+2026-11-09,POS Gruene Schere / Haircut,-29.00,demo-v2-2026-11-014
+2026-11-10,CARD Stadtverkehr / Monthly transport pass,-51.00,demo-v2-2026-11-015
+2026-11-10,POS Stadtmarkt Lebensmittel / Weekly groceries 2,-66.80,demo-v2-2026-11-016
+2026-11-12,POS Trattoria Linden / Dinner with friends,-42.60,demo-v2-2026-11-017
+2026-11-12,POS Backstube am Eck / Bread and rolls,-5.50,demo-v2-2026-11-018
+2026-11-13,"POS Papierhaus / Books, cards and stationery",-23.40,demo-v2-2026-11-019
+2026-11-14,POS Lichtspiel Kino / Cinema ticket,-14.50,demo-v2-2026-11-020
+2026-11-16,SEPA CREDIT Studio North / Freelance illustration invoice 118,185.00,demo-v2-2026-11-021
+2026-11-17,POS Morgenrot coffee / Cappuccino and pastry,-6.20,demo-v2-2026-11-022
+2026-11-17,POS Stadtmarkt Lebensmittel / Weekly groceries 3,-45.45,demo-v2-2026-11-023
+2026-11-18,POS Radwerk / Bicycle service and brake pads,-12.50,demo-v2-2026-11-024
+2026-11-19,POS Kuechenfenster / Lunch menu,-13.90,demo-v2-2026-11-025
+2026-11-19,POS Backstube am Eck / Bread and rolls,-5.60,demo-v2-2026-11-026
+2026-11-20,CARD Wintermarkt / Handmade gifts,-46.00,demo-v2-2026-11-027
+2026-11-21,POS Marktstand Blumen / Birthday flowers,-18.00,demo-v2-2026-11-028
+2026-11-22,CARD Kulturhaus / Concert ticket,-32.00,demo-v2-2026-11-029
+2026-11-24,POS Stadtmarkt / Household cleaning supplies,-15.45,demo-v2-2026-11-030
+2026-11-24,POS Stadtmarkt Lebensmittel / Weekly groceries 4,-63.20,demo-v2-2026-11-031
+2026-11-26,POS Nudelhaus / Takeaway dinner,-18.90,demo-v2-2026-11-032
+2026-11-26,POS Backstube am Eck / Bread and rolls,-5.70,demo-v2-2026-11-033
+2026-11-27,POS Gruene Drogerie / Skin care and toothpaste,-22.75,demo-v2-2026-11-034
+2026-11-28,POS Buchwinkel / Paperback novel,-12.90,demo-v2-2026-11-035

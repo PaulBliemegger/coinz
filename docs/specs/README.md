@@ -9,7 +9,7 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 | [Manual ledger](manual-ledger.md) | Implemented | Identity, optional sources, entries, period totals, preserved legacy data |
 | [CSV import and duplicate review](csv-import.md) | Implemented | Example format, shared duplicate review, atomic commit |
 | [CSV import profiles](import-profiles.md) | Implemented; browser verification blocked | Reusable profiles and independent editor, guided CSV table mapping, editable import review |
-| [Dashboard and Entries](reporting.md) | Implemented | Dashboard, chart, date/search filters, pagination, all-result totals |
+| [Dashboard, Insights and Entries](reporting.md) | Implemented; browser verification blocked | Home, monthly Insights report, rolling income/expense and category charts, drill-downs, filters, pagination, all-result totals |
 | [Categories and labels](classification.md) | Core and import review implemented; browser verification blocked | Single category, optional labels, setup, management, bulk assignment, filters, import drafts and counted deletion; proposed insights |
 | [Local labeling rules](labeling-rules.md) | Implemented; browser verification blocked | Deterministic rules, suggestions, conflicts, historical previews and target lifecycle |
 | [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |

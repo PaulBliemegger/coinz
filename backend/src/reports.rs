@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, QueryBuilder, Sqlite};
 use tower_sessions::Session;
 
+mod category_spending;
+pub mod trends;
+
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Filter {
@@ -26,6 +29,16 @@ pub struct Filter {
     uncategorized: bool,
     #[serde(default)]
     unlabeled: bool,
+    #[serde(default)]
+    entry_type: EntryType,
+}
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum EntryType {
+    #[default]
+    All,
+    Spending,
+    Income,
 }
 #[derive(Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -177,6 +190,15 @@ fn query<'a>(filter: &'a Filter, owner: &'a str, select: &str) -> QueryBuilder<'
     if let Some(end) = &filter.end {
         sql.push(" AND t.date<=").push_bind(end);
     }
+    match filter.entry_type {
+        EntryType::All => {}
+        EntryType::Spending => {
+            sql.push(" AND t.amount_cents<0");
+        }
+        EntryType::Income => {
+            sql.push(" AND t.amount_cents>0");
+        }
+    }
     if let Some(q) = &filter.q {
         sql.push(" AND instr(lower(t.description),lower(")
             .push_bind(q.trim())
@@ -262,6 +284,7 @@ pub struct Dashboard {
     latest: Vec<Entry>,
     latest_date: Option<String>,
     latest_import: Option<String>,
+    spending_categories: Vec<category_spending::CategorySpending>,
 }
 pub async fn dashboard(
     State(state): State<AppState>,
@@ -269,7 +292,7 @@ pub async fn dashboard(
     Query(input): Query<DashboardFilter>,
 ) -> Result<Json<Dashboard>> {
     let user = auth::user(&session, &state.pool).await?;
-    domain::month_range(&input.month)?;
+    let (start, end) = domain::month_range(&input.month)?;
     let year = &input.month[..4];
     let mut tx = state.pool.begin().await?;
     let mut months = Vec::new();
@@ -306,6 +329,7 @@ pub async fn dashboard(
             .bind(&user.id)
             .fetch_one(&mut *tx)
             .await?;
+    let spending_categories = category_spending::load(&mut tx, &user.id, &start, &end).await?;
     tx.commit().await?;
     Ok(Json(Dashboard {
         month: input.month,
@@ -315,5 +339,6 @@ pub async fn dashboard(
         latest,
         latest_date,
         latest_import,
+        spending_categories,
     }))
 }

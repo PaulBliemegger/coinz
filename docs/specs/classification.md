@@ -142,6 +142,25 @@ Entries combines category selection (any selected category and optionally
 Uncategorized), any/all selected label matching, Unlabeled, existing dates, and
 description search. Unlabeled and selected labels are mutually exclusive.
 Filters reset pagination/selection. Archived items remain available explicitly.
+Categories and Labels use compact counted buttons opening searchable multi-select
+panels, with a bounded scrollable list and selected choices first. Search only
+narrows vocabulary choices; it does not change entry-description search or remove
+selected filters. Uncategorized/Unlabeled remain separate quick choices. Each
+picker has its own Include archived option; selected archived choices stay visible
+even when it is off. Only one picker is open at a time. Opening focuses search;
+Done/Escape closes and restores trigger focus, while outside clicks or tabbing out
+dismiss without taking focus back. Choices apply immediately and remain open for
+multiple selections. On phones panels fit within the viewport width.
+
+Any/All label matching appears in the Labels picker when two or more labels are
+selected. The active match mode also remains visible beside the selected chips.
+Below the controls, removable chips expose entry type, category and label filters
+even with the pickers closed. Clear filters resets those choices and label match
+mode, retaining the current dates and applied description search. It does not
+change vocabulary or entry assignments. Include archived only changes available
+choices; it is not an entry filter. The [reporting spec](reporting.md#entries)
+owns period, description search and the adjacent All/Expenses/Income control.
+
 Reloads clear selection; inline picker state survives successful same-query reads
 when the entry still matches. Read failures hide old results and offer Retry.
 
@@ -213,12 +232,18 @@ matching and retry preservation. `frontend/e2e/ledger.spec.ts` defines bulk/per-
 review editing, cancellation, draft-to-match discard, commit, and screenshots;
 classification journeys also check desktop/phone row placement.
 See README for whether those journeys actually ran; source coverage is not visual QA.
+`frontend/e2e/entry-filters.spec.ts` defines desktop/phone compact-picker search,
+combined type/category/label matching, selected archived retention, Unlabeled,
+active-chip removal, Escape/outside dismissal, clear-without-losing-period/search,
+and screenshots. `frontend/tests/filter-choices.test.ts` covers vocabulary search,
+selected-first order, and selected archived retention.
 
 ## Follow-ups
 
 The implemented [local labeling rules](labeling-rules.md) own suggestion behavior,
 management, manual-entry drafts, imports, history application, and target lifecycle.
 
-Category spending/income breakdowns, period comparisons, and label analysis remain
+Home's [category spending breakdown](reporting.md#spending-by-category) is implemented.
+Category income breakdowns, period comparisons, and label analysis remain
 proposed. All figures should link to their underlying entries. Split allocations
 are separate later work and must sum exactly to the entry amount.

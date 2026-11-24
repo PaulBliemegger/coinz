@@ -1,5 +1,5 @@
 date,description,amount,external_id
-2026-11-07,Example coffee,-3.50,nov-004
-2026-11-07,Example coffee,-3.50,nov-005
-2026-11-12,Example restaurant,-48.60,nov-006
-2026-11-28,Example cinema,-16.00,nov-009
+2026-11-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-11-011
+2026-11-07,POS Morgenrot coffee / Flat white,-3.80,demo-v2-2026-11-012
+2026-11-12,POS Trattoria Linden / Dinner with friends,-42.60,demo-v2-2026-11-017
+2026-11-29,POS Lichtspiel Kino / Sunday matinee,-16.00,demo-v2-2026-11-extra-001

@@ -507,9 +507,11 @@ test('overlapping imports retain one creator and disclose cross-import removals'
   await expect(page.getByTestId('spending')).toHaveText('€3.00');
 });
 
-for (const view of ['dashboard', 'entries', 'imports']) {
+for (const view of ['dashboard', 'insights', 'entries', 'imports']) {
   test(`${view} returns to login after logout in another tab`, async ({ page }, info) => {
     await login(page, `${info.project.name}-user`);
+    if (view === 'insights')
+      await page.getByRole('link', { name: 'Insights', exact: true }).click();
     if (view === 'entries') await page.getByRole('link', { name: 'View all' }).click();
     if (view === 'imports')
       await page.route(
@@ -528,7 +530,7 @@ for (const view of ['dashboard', 'entries', 'imports']) {
     });
     expect(response.ok()).toBeTruthy();
     await otherTab.close();
-    if (view === 'dashboard')
+    if (view === 'dashboard' || view === 'insights')
       await page.getByRole('button', { name: 'Next month', exact: true }).click();
     if (view === 'entries') {
       await page.getByLabel('Search descriptions').fill('expired session');

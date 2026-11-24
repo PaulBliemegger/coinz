@@ -109,6 +109,7 @@ pub async fn app(
         .route("/summary", get(ledger::summary))
         .route("/entries", get(reports::entries))
         .route("/dashboard", get(reports::dashboard))
+        .route("/insights/trends", get(reports::trends::get))
         .route(
             "/imports/profiles",
             get(imports::profiles::list).post(imports::profiles::create),

@@ -171,15 +171,23 @@ file can simply be closed. Choosing another file discards local selection.
 
 Fixtures: [demo.csv](../../examples/imports/demo.csv) and
 [demo-overlap.csv](../../examples/imports/demo-overlap.csv).
+They contain wholly synthetic merchant-style descriptions, salary and freelance
+income, recurring bills, groceries, leisure and a September Salzburg trip. The
+[workflow walkthrough](../../examples/imports/README.md) suggests local rules and
+classification checks. Dates and IDs are fixed; these fixtures do not assert
+complete real-world history or include transfers/refunds. Use a fresh synthetic
+source when replacing imports of the older 16-entry demo: this version uses new
+`demo-v2-` IDs and does not replace old entries.
 
 | Scenario | Expected result |
 | --- | --- |
-| First demo import into a fresh source | 16 entries, with both coffees on each date retained |
-| October 2026 totals | Income €2,400.00; spending €960.24; net €1,439.76 |
-| November 2026 totals | Income €2,400.00; spending €1,063.79; net €1,336.21 |
+| First demo import into a fresh source | 106 entries across September–November, with both identical coffees on each monthly coffee date retained |
+| September 2026 totals (37 entries) | Income €2,400.00; spending €1,914.33; net €485.67 |
+| October 2026 totals (34 entries) | Income €2,400.00; spending €1,704.48; net €695.52 |
+| November 2026 totals (35 entries) | Income €2,585.00; spending €1,596.88; net €988.12 |
 | Exact repeat into the same source | No additions |
 | Overlap file after demo | Three known rows and one new €16 cinema expense |
-| November after overlap | Spending €1,079.79; net €1,320.21 |
+| November after overlap | Spending €1,612.88; net €972.12 |
 | Same bank ID with changed amount | Conflict; no silent overwrite |
 | Blank ID and a similar manual entry | Review; explicit match or keep separate |
 | Identical rows with blank and stable IDs, in either order | Blank-ID row needs review; distinct stable-ID rows remain eligible; unresolved selected rows reject the entire commit |
@@ -187,6 +195,10 @@ Fixtures: [demo.csv](../../examples/imports/demo.csv) and
 | Malformed CSV | Actionable error; no commit |
 | Import just one of two valid rows | Other row remains available on repeat; no skip provenance |
 | Cancel, cross-user source/match, or failed commit | No entries or provenance written |
+
+The small fixed import fixtures in `backend/tests/fixtures/` retain focused legacy
+regression examples. The public expanded demo is tested separately through rules,
+all three monthly reports, duplicate coffees, exact repeats, overlap and isolation.
 
 Parser regression coverage is in `backend/src/imports/parse.rs`; temporary
 SQLite/API scenarios are in `backend/tests/ledger.rs`, including edits/deletion,

@@ -5,6 +5,7 @@
   import { localDate, money } from '#lib/money.ts';
   import type { ClassificationCatalog } from '#lib/features/classification/types.ts';
   import EntriesList from './EntriesList.svelte';
+  import EntryClassificationFilters from './EntryClassificationFilters.svelte';
   let {
     sources,
     catalog,
@@ -36,7 +37,7 @@
   let uncategorized = $state(false);
   let unlabeled = $state(false);
   let labelMatch = $state('any');
-  let includeArchived = $state(false);
+  let entryType = $state('all');
   let loadedQuery = '';
   let data = $state<EntriesPage | null>(null);
   let loading = $state(false);
@@ -49,6 +50,10 @@
   }
   onMount(() => {
     const params = new SvelteURLSearchParams(window.location.search);
+    categoryIds = params.get('category_ids')?.split(',').filter(Boolean) ?? [];
+    uncategorized = params.get('uncategorized') === 'true';
+    const requestedType = params.get('entry_type');
+    if (requestedType === 'spending' || requestedType === 'income') entryType = requestedType;
     if (params.has('all') || params.has('start') || params.has('end')) {
       start = params.get('start') ?? '';
       end = params.get('end') ?? '';
@@ -76,6 +81,7 @@
     if (uncategorized) params.set('uncategorized', 'true');
     if (unlabeled) params.set('unlabeled', 'true');
     params.set('label_match', labelMatch);
+    params.set('entry_type', entryType);
     return params.toString();
   });
   $effect(() => {
@@ -175,74 +181,16 @@
     </label><button class="button">Search</button>
   </form>
 </section>
-<section class="classification-filters" aria-label="Classification filters">
-  <details>
-    <summary>
-      Categories{categoryIds.length || uncategorized
-        ? ` · ${categoryIds.length + Number(uncategorized)} selected`
-        : ''}
-    </summary>
-    <div class="classification-filter-options">
-      <label class="setup-choice">
-        <input
-          type="checkbox"
-          bind:checked={uncategorized}
-          onchange={() => (page = 1)}
-        />Uncategorized
-      </label>
-      {#each catalog.categories.filter((c) => includeArchived || !c.archived || categoryIds.includes(c.id)) as item (item.id)}<label
-          class="setup-choice"
-        >
-          <input
-            type="checkbox"
-            value={item.id}
-            bind:group={categoryIds}
-            onchange={() => (page = 1)}
-          />{item.name}{item.archived ? ' · Archived' : ''}
-        </label>{/each}
-    </div>
-  </details>
-  <details>
-    <summary>
-      Labels{labelIds.length ? ` · ${labelIds.length} selected` : unlabeled ? ' · Unlabeled' : ''}
-    </summary>
-    <div class="classification-filter-options">
-      <label>
-        Match<select bind:value={labelMatch} onchange={() => (page = 1)}>
-          <option value="any">Any selected label</option><option value="all">
-            All selected labels
-          </option>
-        </select>
-      </label>
-      <label class="setup-choice">
-        <input
-          type="checkbox"
-          bind:checked={unlabeled}
-          onchange={() => {
-            labelIds = [];
-            page = 1;
-          }}
-        />Unlabeled
-      </label>
-      {#each catalog.labels.filter((l) => includeArchived || !l.archived || labelIds.includes(l.id)) as item (item.id)}<label
-          class="setup-choice"
-        >
-          <input
-            type="checkbox"
-            value={item.id}
-            bind:group={labelIds}
-            onchange={() => {
-              unlabeled = false;
-              page = 1;
-            }}
-          />{item.name}{item.archived ? ' · Archived' : ''}
-        </label>{/each}
-    </div>
-  </details>
-  <label class="setup-choice">
-    <input type="checkbox" bind:checked={includeArchived} />Include archived
-  </label>
-</section>
+<EntryClassificationFilters
+  {catalog}
+  bind:entryType
+  bind:categoryIds
+  bind:labelIds
+  bind:uncategorized
+  bind:unlabeled
+  bind:labelMatch
+  onchange={() => (page = 1)}
+/>
 <p class="muted">
   {period === 'custom' && !start && !end
     ? 'All recorded history'

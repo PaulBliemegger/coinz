@@ -68,7 +68,7 @@ test('categories and labels stay distinct through editing, filtering and archivi
     row.getByRole('button', { name: 'Remove label Shared fixture', exact: true }),
   ).toHaveCount(0);
   const filters = page.getByRole('region', { name: 'Classification filters' });
-  await filters.getByText('Labels', { exact: true }).click();
+  await filters.getByRole('button', { name: /^Labels/ }).click();
   await filters.getByLabel('Italy fixture', { exact: true }).check();
   await expect(page.getByTestId('spending')).toHaveText('€40.00');
   await page.screenshot({

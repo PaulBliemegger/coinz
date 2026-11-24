@@ -16,13 +16,16 @@ Appearance follows the system by default, with Light/Dark overrides.
 Try **Import CSV** on Home, Entries, or Imports using [demo.csv](examples/imports/demo.csv).
 Create a fresh source and profile; map Date to `date`, Amount to `amount`, and
 Description to `description`. Choose `external_id` for the optional ID mapping.
-Keep the default reading settings, name/save the profile, review the 16 synthetic
+Keep the default reading settings, name/save the profile, review the 106 synthetic
 entries, then import. Reuse that profile for subsequent example files. Choose
-November 2026 in the centered dashboard month picker to see €2,400.00 income and
-€1,063.79 spending, or use View all to see both imported months.
+November 2026 on Home or Insights to see €2,585.00 income and
+€1,596.88 spending, or use View all to explore September–November.
 Importing the same file again adds nothing;
 [demo-overlap.csv](examples/imports/demo-overlap.csv) adds just a €16 cinema expense.
 Use a synthetic development runtime for this walkthrough.
+See the [demo workflow](examples/imports/README.md) for suggested local rules,
+trip labels and checks. Use a fresh synthetic source when replacing the older demo;
+this expanded fixture has new IDs and does not replace previously imported entries.
 
 The [CSV profile presets](docs/specs/import-profiles.md) support UTF-8 header CSVs,
 comma/semicolon delimiters, three explicit date formats and exact signed EUR
@@ -40,13 +43,25 @@ sequencing and the
 [specification index](docs/specs/README.md) for detailed behavior and feature status.
 Bank balance tracking and reconciliation are outside the core scope.
 
+Home's **Spending by category** panel breaks down the selected month's recorded
+spending, including archived and Uncategorized entries. Click a bar to open its
+spending entries. Entries groups **All / Expenses / Income**, searchable category
+and label pickers, and removable active-filter chips together. Clear filters keeps
+the selected dates and description search.
+See [reporting](docs/specs/reporting.md#spending-by-category).
+The **Insights** tab shows the full monthly report plus six-/twelve-month income
+versus expenses and category spending charts. Bars link to their entries; exact
+figures are available in tables. Home's **Explore insights** link carries over
+the selected month.
+
 ### Verification status
 
-Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 43
+Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 48
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
 startup because the agent sandbox denies local sockets; browser assertions and
 visual review remain unverified. An offline Chromium launch was also unavailable.
-The category/label, import-review, and rule desktop/phone journeys are defined but could not run.
+The category/label, compact-filter, import-review, rule, and Insights navigation/report desktop/phone journeys
+are defined but could not run.
 See [agent test permissions](docs/agent-testing.md).
 The frontend checks ran with Node 26.13.1 and reported an engine warning;
 the supported project version remains Node 24.22.3.

@@ -131,6 +131,22 @@ export interface DashboardData {
   latest: Transaction[];
   latest_date: string | null;
   latest_import: string | null;
+  spending_categories: CategorySpending[];
+}
+export interface CategorySpending {
+  category: ClassificationItem | null;
+  spending_cents: string;
+  entry_count: number;
+  share_percent: string;
+}
+export interface TrendMonth extends Totals {
+  month: string;
+  category_spending_cents: string;
+  category_entry_count: number;
+}
+export interface InsightTrends {
+  category: ClassificationItem | null;
+  months: TrendMonth[];
 }
 export interface ImportBatch {
   id: string;

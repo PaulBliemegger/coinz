@@ -35,6 +35,8 @@ backend/
     auth.rs               Identity, sessions, CSRF
     ledger.rs             Optional sources, entry writes and legacy monthly reads
     reports.rs            Paginated entry queries and dashboard read snapshots
+    reports/category_spending.rs  Exact monthly spending buckets and shares
+    reports/trends.rs      Owned rolling monthly income/expense and category series
     classification.rs     Owned categories/labels, setup and atomic assignments
     classification_deletion.rs  Counted deletion with stale-review protection
     rules/                Deterministic matching, owned rules and history application
@@ -46,7 +48,7 @@ backend/
   tests/ledger.rs         Temporary SQLite and API integration tests
 frontend/
   AGENTS.md               Svelte/TypeScript conventions
-  src/routes/             Home, Entries, Imports routes and shared page styles
+  src/routes/             Home, Insights, Entries, Imports and Organize routes
   src/lib/App.svelte      Session shell, navigation, shared entry/import actions
   src/lib/features/       Dashboard, Entries, import review and batch removal
   src/lib/components/     Reused visual/interaction primitives
@@ -139,6 +141,9 @@ scaffolding directories, generic utility collections, and required layers.
   Reporting uses checked integer totals in Rust and one read transaction per
   response, avoiding SQLite integer SUM overflow. It loads matching amounts,
   not all entry metadata; streaming aggregation can follow if volume warrants it.
+  The monthly category breakdown joins only the single category assignment,
+  accumulates checked spending and rounded shares in Rust, and shares the dashboard
+  snapshot. It never joins labels, so overlapping labels cannot multiply amounts.
 - Appearance initializes before paint through CSS theme tokens. Local view
   preferences contain no financial or authentication data; see
   [appearance behavior](specs/manual-ledger.md#appearance-and-user-menu).

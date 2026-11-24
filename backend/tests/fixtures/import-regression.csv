@@ -1,0 +1,17 @@
+date,description,amount,external_id
+2026-10-01,Example employer,2400.00,oct-001
+2026-10-02,Example rent,-800.00,oct-002
+2026-10-05,Example groceries,-62.35,oct-003
+2026-10-07,Example coffee,-3.50,oct-004
+2026-10-07,Example coffee,-3.50,oct-005
+2026-10-12,"Example books, stationery",-28.90,oct-006
+2026-10-18,Example train,-49.00,oct-007
+2026-10-25,Example subscription,-12.99,oct-008
+2026-11-01,Example employer,2400.00,nov-001
+2026-11-02,Example rent,-800.00,nov-002
+2026-11-04,Example groceries,-75.20,nov-003
+2026-11-07,Example coffee,-3.50,nov-004
+2026-11-07,Example coffee,-3.50,nov-005
+2026-11-12,Example restaurant,-48.60,nov-006
+2026-11-18,Example bicycle repair,-120.00,nov-007
+2026-11-25,Example subscription,-12.99,nov-008
