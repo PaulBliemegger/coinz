@@ -1,4 +1,11 @@
 <script lang="ts">
+  import RuleExplanation from '#lib/features/rules/RuleExplanation.svelte';
+  import ClassificationEditor from '#lib/features/classification/ClassificationEditor.svelte';
+  import type {
+    ClassificationCatalog,
+    ClassificationChange,
+  } from '#lib/features/classification/types.ts';
+  import type { ImportClassificationDraft } from './classification.ts';
   import { escapeToCancel } from '../ledger/escape.ts';
   import { onDestroy, tick } from 'svelte';
   import SelectionHighlight from '#lib/components/selection/SelectionHighlight.svelte';
@@ -8,6 +15,12 @@
   import { money } from '#lib/money.ts';
   let {
     row,
+    catalog,
+    oncatalogchanged,
+    classification,
+    discardedClassification,
+    onclassification,
+    onclassificationbusy,
     selected,
     choice,
     busy,
@@ -19,6 +32,12 @@
     onediting,
   }: {
     row: ImportRow;
+    catalog: ClassificationCatalog;
+    oncatalogchanged: () => Promise<void>;
+    classification?: ImportClassificationDraft;
+    discardedClassification?: boolean;
+    onclassification: (change: ClassificationChange) => Promise<void>;
+    onclassificationbusy: (busy: boolean) => void;
     selected: boolean;
     choice: string;
     busy: boolean;
@@ -34,6 +53,15 @@
       (row.status === 'new' || (row.status === 'review' && choice === 'keep')),
   );
   let editing = $state(false);
+  let classifying = $state(false);
+  const blocked = $derived(busy || classifying);
+  const category = $derived(
+    catalog.categories.find((c) => c.id === classification?.category_id) ?? null,
+  );
+  const labels = $derived(catalog.labels.filter((l) => classification?.label_ids.includes(l.id)));
+  const hasClassification = $derived(
+    Boolean(classification?.category_id || classification?.label_ids.length),
+  );
   let text = $state('');
   let input = $state<HTMLInputElement>();
   let pendingMatch = $state('');
@@ -45,11 +73,14 @@
     await tick();
     input?.focus();
   }
-  onDestroy(() => onediting(false));
+  onDestroy(() => {
+    onediting(false);
+    onclassificationbusy(false);
+  });
   function choose(value: string) {
     pendingMatch = '';
     onediting(false);
-    if (value.startsWith('match:') && draft !== undefined) {
+    if (value.startsWith('match:') && (draft !== undefined || hasClassification)) {
       pendingMatch = value;
       onediting(true);
       return;
@@ -61,8 +92,8 @@
 <article
   class="review-row"
   class:selected
-  class:selectable={selectable && !busy}
-  use:rowSelection={{ selected, disabled: busy || !selectable, onselect }}
+  class:selectable={selectable && !blocked}
+  use:rowSelection={{ selected, disabled: blocked || !selectable, onselect }}
   class:attention={row.status === 'invalid' ||
     row.status === 'conflict' ||
     (row.status === 'review' && !choice) ||
@@ -73,7 +104,7 @@
     <RoundSelection
       label={`Include ${row.description || 'invalid row'}`}
       {selected}
-      disabled={busy || !selectable}
+      disabled={blocked || !selectable}
       {onselect}
     />
 
@@ -107,11 +138,11 @@
               oninput={() => input?.setCustomValidity('')}
               required
               maxlength="200"
-              disabled={busy}
+              disabled={blocked}
             />
           </label>
           <div>
-            <button class="button" disabled={busy}>Save description</button><button
+            <button class="button" disabled={blocked}>Save description</button><button
               type="button"
               class="button quiet"
               onclick={() => {
@@ -132,7 +163,7 @@
             id={`import-description-${row.record}`}
             type="button"
             class="description-button"
-            disabled={busy}
+            disabled={blocked}
             onclick={edit}
           >
             {row.description || 'Add description'}
@@ -155,20 +186,65 @@
     </div>
     <span class="amount">{row.amount_cents ? money(row.amount_cents, true) : 'Not validated'}</span>
   </div>
+  {#if selectable}
+    <div class="draft-classification">
+      <ClassificationEditor
+        {catalog}
+        {category}
+        {labels}
+        name={row.description || 'this imported entry'}
+        idPrefix={`import-${row.record}`}
+        disabled={busy || editing}
+        onchange={onclassification}
+        {oncatalogchanged}
+        onbusy={(value) => {
+          classifying = value;
+          onclassificationbusy(value);
+        }}
+      />
+    </div>
+  {/if}
+  {#if selectable && row.rule_suggestions?.matched_rules.length}
+    <div class="draft-classification">
+      <RuleExplanation
+        plan={row.rule_suggestions}
+        {catalog}
+        confirmed={classification?.category_confirmed ?? false}
+      /><button
+        type="button"
+        class="button quiet"
+        disabled={blocked}
+        onclick={async () => {
+          if (!classification?.category_confirmed)
+            await onclassification({ action: 'set_category', category_id: null });
+          if (!classification?.labels_confirmed)
+            await onclassification({
+              action: 'remove_labels',
+              label_ids: row.rule_suggestions?.label_ids ?? [],
+            });
+        }}
+      >
+        Remove suggestions
+      </button>
+    </div>
+  {/if}
   {#if row.description_error}<p class="row-error">
       {row.description_error} Add or edit the description before selecting this entry.
     </p>{/if}
   {#if choice.startsWith('match:')}<p class="muted">
-      The existing entry’s description is kept.{discardedDraft
+      The existing entry’s description, category and labels are kept.{discardedDraft
         ? ` Draft “${discardedDraft}” was discarded.`
-        : ''}
+        : ''}{discardedClassification ? ' Draft category/labels were discarded.' : ''}
     </p>{/if}
   {#if pendingMatch}<div role="alert">
-      <p>The existing entry’s description will be kept. Discard draft “{draft}”?</p>
+      <p>
+        The existing entry’s description, category and labels will be kept. Discard your draft
+        changes{draft !== undefined ? ` (“${draft}”)` : ''}?
+      </p>
       <button
         type="button"
         class="button"
-        disabled={busy}
+        disabled={blocked}
         onclick={() => {
           onediting(false);
           onchoice(pendingMatch);
@@ -179,7 +255,7 @@
       </button><button
         type="button"
         class="button quiet"
-        disabled={busy}
+        disabled={blocked}
         onclick={() => {
           pendingMatch = '';
           onediting(false);
@@ -197,7 +273,7 @@
     <label class="decision">
       Duplicate decision for {row.description}<select
         value={choice}
-        disabled={busy || editing}
+        disabled={blocked || editing}
         onchange={(event) => {
           const control = event.currentTarget;
           choose(control.value);
@@ -222,6 +298,10 @@
 </article>
 
 <style>
+  .draft-classification {
+    margin-left: 3.5rem;
+    min-width: 0;
+  }
   .review-row {
     position: relative;
     isolation: isolate;

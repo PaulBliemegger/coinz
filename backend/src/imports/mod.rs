@@ -1,3 +1,4 @@
+mod classification;
 pub mod history;
 mod parse;
 pub mod profiles;
@@ -24,6 +25,9 @@ pub struct Input {
     layout: Option<profiles::Layout>,
     #[serde(default)]
     descriptions: HashMap<usize, String>,
+    #[serde(default)]
+    classifications: HashMap<usize, classification::Draft>,
+    rules_revision: Option<i64>,
     csv: String,
     filename: Option<String>,
     #[serde(default)]
@@ -69,10 +73,12 @@ struct PreviewRow {
     status: &'static str,
     candidates: Vec<Candidate>,
     description_error: Option<String>,
+    rule_suggestions: crate::rules::Suggestions,
 }
 
 #[derive(Serialize)]
 pub struct Preview {
+    rules_revision: i64,
     rows: Vec<PreviewRow>,
 }
 
@@ -107,6 +113,7 @@ async fn classify(
     rows: Vec<Row>,
 ) -> Result<Preview> {
     owned_source(conn, user, &input.source_id).await?;
+    let rules = crate::rules::snapshot(conn, user).await?;
     // Inspect the whole file so ID-less rows also see stable-ID counterparts later on.
     let fields_with_ids: HashSet<_> = rows
         .iter()
@@ -179,14 +186,30 @@ async fn classify(
         let description_error = crate::domain::text(&row.description, "Description", 200)
             .err()
             .map(|e| e.1);
+        let rule_suggestions = if matches!(status, "new" | "review") {
+            crate::rules::suggest(
+                &rules,
+                input
+                    .descriptions
+                    .get(&row.record)
+                    .unwrap_or(&row.description),
+                Some(&input.source_id),
+            )
+        } else {
+            crate::rules::Suggestions::default()
+        };
         result.push(PreviewRow {
+            rule_suggestions,
             description_error,
             row,
             status,
             candidates,
         });
     }
-    Ok(Preview { rows: result })
+    Ok(Preview {
+        rules_revision: rules.revision,
+        rows: result,
+    })
 }
 
 #[derive(Deserialize)]
@@ -306,6 +329,15 @@ pub async fn commit(
         crate::domain::text(description, "Description", 200)?;
     }
     let preview = classify(&mut tx, &user.id, &input, &hash, rows).await?;
+    if input
+        .rules_revision
+        .is_some_and(|revision| revision != preview.rules_revision)
+    {
+        return Err(AppError::invalid(
+            "Labeling rules changed since preview. Review this file again before importing.",
+        ));
+    }
+    classification::validate(&mut tx, &user.id, &input, &preview).await?;
     let mut outcome = Outcome {
         added: 0,
         matched: 0,
@@ -409,6 +441,28 @@ pub async fn commit(
                 let id = Uuid::new_v4().to_string();
                 sqlx::query("INSERT INTO transactions(id,user_id,source_id,date,description,amount_cents,origin) VALUES(?,?,?,?,?,?,'csv')")
                     .bind(&id).bind(&user.id).bind(&input.source_id).bind(&row.date).bind(description).bind(row.cents).execute(&mut *tx).await?;
+                if let Some(draft) = input.classifications.get(&row.record) {
+                    classification::apply(&mut tx, &user.id, &id, draft).await?;
+                } else if input.rules_revision.is_some() {
+                    let suggestions = &item.rule_suggestions;
+                    if suggestions.conflict {
+                        return Err(AppError::invalid(
+                            "Rules suggest different categories. Choose a category in review.",
+                        ));
+                    }
+                    crate::classification::set_category(
+                        &mut tx,
+                        &user.id,
+                        &id,
+                        suggestions.category_id.as_deref(),
+                    )
+                    .await?;
+                    for label in &suggestions.label_ids {
+                        crate::classification::change_label(&mut tx, &user.id, &id, label, true)
+                            .await?;
+                    }
+                }
+                // Initial assignments are part of the import, not subsequent edits.
                 history::link(&mut tx, &batch, &user.id, &id, "added").await?;
                 outcome.added += 1;
                 if row.cents > 0 {

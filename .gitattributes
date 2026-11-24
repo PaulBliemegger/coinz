@@ -1,0 +1,4 @@
+# SQLx checksums raw migration bytes; checkout settings must not rewrite them.
+backend/migrations/*.sql text eol=lf
+# Prettier also expects LF; leave binary frontend assets auto-detected.
+frontend/** text=auto eol=lf

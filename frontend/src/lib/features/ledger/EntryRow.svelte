@@ -1,4 +1,9 @@
 <script lang="ts">
+  import ClassificationEditor from '#lib/features/classification/ClassificationEditor.svelte';
+  import type {
+    ClassificationCatalog,
+    ClassificationChange,
+  } from '#lib/features/classification/types.ts';
   import { escapeToCancel } from './escape.ts';
   import SelectionHighlight from '#lib/components/selection/SelectionHighlight.svelte';
   import RoundSelection from '#lib/components/selection/RoundSelection.svelte';
@@ -9,13 +14,19 @@
   let {
     entry,
     sources,
+    catalog,
+    oncatalogchanged,
     selected,
     disabled,
     onselect,
     onchanged,
+    oncreaterule,
   }: {
     entry: Transaction;
+    oncreaterule: (entry: Transaction) => void;
     sources: Source[];
+    catalog: ClassificationCatalog;
+    oncatalogchanged: () => Promise<void>;
     selected: boolean;
     disabled: boolean;
     onselect: (checked: boolean) => void;
@@ -26,6 +37,8 @@
   let value = $state('');
   let kind = $state('expense');
   let busy = $state(false);
+  let classificationBusy = $state(false);
+  let classificationEdited = $state(false);
   let error = $state('');
   let input = $state<HTMLInputElement | HTMLSelectElement>();
   let trigger: HTMLButtonElement | null = null;
@@ -33,6 +46,11 @@
     entry.origin === 'csv' ? 'CSV' : entry.origin === 'manual' ? 'Manual' : 'Origin unknown',
   );
 
+  async function classify(change: ClassificationChange) {
+    await api('/transactions/classify', 'POST', { ids: [entry.id], ...change });
+    classificationEdited = true;
+    await onchanged('Classification updated.');
+  }
   async function start(next: Field, event: MouseEvent) {
     trigger = event.currentTarget as HTMLButtonElement;
     field = next;
@@ -78,14 +96,14 @@
 <li
   class="entry-row"
   class:selected
-  class:selection-disabled={disabled || busy}
-  use:rowSelection={{ selected, disabled: disabled || busy, onselect }}
+  class:selection-disabled={disabled || busy || classificationBusy}
+  use:rowSelection={{ selected, disabled: disabled || busy || classificationBusy, onselect }}
 >
   <SelectionHighlight {selected} />
   <RoundSelection
     label={`Select ${entry.description}`}
     {selected}
-    disabled={disabled || busy}
+    disabled={disabled || busy || classificationBusy}
     {onselect}
   />
   <div class="entry-content">
@@ -134,6 +152,29 @@
   >
     {money(entry.amount_cents, true)}
   </button>
+  <div class="entry-classification">
+    <ClassificationEditor
+      compactUncategorized
+      {catalog}
+      category={entry.category}
+      labels={entry.labels}
+      name={entry.description}
+      idPrefix={`entry-${entry.id}`}
+      disabled={busy || disabled}
+      onchange={classify}
+      {oncatalogchanged}
+      onbusy={(value) => (classificationBusy = value)}
+    />
+  </div>
+  {#if classificationEdited}<div class="rule-from-entry">
+      <button
+        class="button quiet"
+        disabled={busy || classificationBusy}
+        onclick={() => oncreaterule(entry)}
+      >
+        Create rule from this entry…
+      </button>
+    </div>{/if}
   {#if field}
     <form
       class="inline-form"
@@ -183,6 +224,24 @@
 </li>
 
 <style>
+  .entry-classification,
+  .entry-classification :global(.classification-editor) {
+    display: contents;
+  }
+  .entry-classification :global(.classification-line) {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    position: relative;
+    z-index: 1;
+  }
+  .entry-classification :global(.classification-picker),
+  .entry-classification :global(.classification-editor > .error) {
+    grid-column: 2 / -1;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+  }
+
   .entry-row {
     display: grid;
     position: relative;
@@ -257,6 +316,20 @@
   .inline-form .error {
     width: 100%;
   }
+  @media (min-width: 900px) {
+    .entry-row {
+      grid-template-columns: 44px minmax(160px, 1fr) minmax(180px, 40%) auto;
+    }
+    .entry-classification :global(.classification-line) {
+      grid-column: 3;
+      grid-row: 1;
+      align-self: center;
+    }
+    .amount {
+      grid-column: 4;
+      grid-row: 1;
+    }
+  }
   @media (hover: hover) and (pointer: fine) {
     :global(.entries-list:not(.show-selection))
       .entry-row:not(:hover):not(:focus-within)
@@ -270,6 +343,9 @@
     }
   }
   @media (max-width: 420px) {
+    .entry-classification :global(.classification-line) {
+      grid-row: 3;
+    }
     .entry-row {
       grid-template-columns: 44px minmax(0, 1fr);
     }

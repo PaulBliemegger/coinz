@@ -1,16 +1,28 @@
 <script lang="ts">
   import { escapeToCancel } from './escape.ts';
   import { api, type Transaction, type Source } from '#lib/api.ts';
+  import type {
+    ClassificationCatalog,
+    ClassificationChange,
+  } from '#lib/features/classification/types.ts';
   import EntryRow from './EntryRow.svelte';
   let {
     entries,
     sources,
+    catalog,
+    refresh,
+    oncatalogchanged,
     scope,
     always,
     onchanged,
+    oncreaterule,
   }: {
     entries: Transaction[];
+    oncreaterule: (entry: Transaction) => void;
     sources: Source[];
+    catalog: ClassificationCatalog;
+    refresh: number;
+    oncatalogchanged: () => Promise<void>;
     scope: string;
     always: boolean;
     onchanged: (notice: string, focusId?: string) => Promise<void>;
@@ -20,8 +32,41 @@
   let busy = $state(false);
   let error = $state('');
   let bin = $state<HTMLButtonElement>();
+  let bulkAction = $state('');
+  let bulkCategory = $state('');
+  let bulkLabels = $state<string[]>([]);
+  $effect(() => {
+    void refresh;
+    selected = [];
+    confirm = false;
+    bulkAction = '';
+  });
+  async function classify(event: SubmitEvent) {
+    event.preventDefault();
+    if (!selected.length || busy) return;
+    const change: ClassificationChange =
+      bulkAction === 'set_category'
+        ? { action: 'set_category', category_id: bulkCategory || null }
+        : {
+            action: bulkAction === 'add_labels' ? 'add_labels' : 'remove_labels',
+            label_ids: bulkLabels,
+          };
+    busy = true;
+    error = '';
+    try {
+      await api('/transactions/classify', 'POST', { ids: selected, ...change });
+      bulkAction = '';
+      selected = [];
+      await onchanged('Selected entries updated.');
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : 'Could not update selected entries.';
+    } finally {
+      busy = false;
+    }
+  }
   function select(id: string, checked: boolean) {
     confirm = false;
+    bulkAction = '';
     error = '';
     selected = checked
       ? [...new Set([...selected, id])].slice(0, 100)
@@ -93,6 +138,22 @@
             Clear selection
           </button>
         </div>
+        <div class="classification-actions">
+          {#each [['set_category', 'Set category'], ['add_labels', 'Add labels'], ['remove_labels', 'Remove labels']] as [action, label] (action)}
+            <button
+              type="button"
+              class="button quiet"
+              disabled={busy}
+              onclick={() => {
+                bulkAction = bulkAction === action ? '' : action;
+                bulkLabels = [];
+                confirm = false;
+              }}
+            >
+              {label}
+            </button>
+          {/each}
+        </div>
         <div class="delete-actions">
           <button
             bind:this={bin}
@@ -136,10 +197,60 @@
       </section>
     {/if}
   </div>
+  {#if bulkAction && selected.length}
+    <form class="classification-picker" onsubmit={classify}>
+      {#if bulkAction === 'set_category'}<label>
+          Category for {selected.length} selected entries<select
+            bind:value={bulkCategory}
+            disabled={busy}
+          >
+            <option value="">
+              Uncategorized
+            </option>{#each catalog.categories.filter((c) => !c.archived) as item (item.id)}<option
+                value={item.id}
+              >
+                {item.name}
+              </option>{/each}
+          </select>
+        </label>
+      {:else}<fieldset>
+          <legend>
+            {bulkAction === 'add_labels' ? 'Add' : 'Remove'} labels on {selected.length} selected entries
+          </legend>{#each catalog.labels.filter((l) => bulkAction === 'remove_labels' || !l.archived) as item (item.id)}<label
+              class="setup-choice"
+            >
+              <input
+                type="checkbox"
+                value={item.id}
+                bind:group={bulkLabels}
+                disabled={busy}
+              />{item.name}{item.archived ? ' · Archived' : ''}
+            </label>{/each}
+        </fieldset>{/if}
+      <div class="classification-actions">
+        <button
+          class="button primary"
+          disabled={busy || (bulkAction !== 'set_category' && !bulkLabels.length)}
+        >
+          Apply to {selected.length} entries
+        </button><button
+          type="button"
+          class="button"
+          disabled={busy}
+          onclick={() => (bulkAction = '')}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  {/if}
   <ul aria-label="Recorded entries">
     {#each entries as entry (entry.id)}<EntryRow
         {entry}
         {sources}
+        {catalog}
+        {oncreaterule}
+        {oncatalogchanged}
         selected={selected.includes(entry.id)}
         disabled={busy || (selected.length >= 100 && !selected.includes(entry.id))}
         onselect={(checked) => select(entry.id, checked)}

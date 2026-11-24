@@ -507,9 +507,11 @@ test('overlapping imports retain one creator and disclose cross-import removals'
   await expect(page.getByTestId('spending')).toHaveText('€3.00');
 });
 
-for (const view of ['dashboard', 'entries', 'imports']) {
+for (const view of ['dashboard', 'insights', 'entries', 'imports']) {
   test(`${view} returns to login after logout in another tab`, async ({ page }, info) => {
     await login(page, `${info.project.name}-user`);
+    if (view === 'insights')
+      await page.getByRole('link', { name: 'Insights', exact: true }).click();
     if (view === 'entries') await page.getByRole('link', { name: 'View all' }).click();
     if (view === 'imports')
       await page.route(
@@ -528,7 +530,7 @@ for (const view of ['dashboard', 'entries', 'imports']) {
     });
     expect(response.ok()).toBeTruthy();
     await otherTab.close();
-    if (view === 'dashboard')
+    if (view === 'dashboard' || view === 'insights')
       await page.getByRole('button', { name: 'Next month', exact: true }).click();
     if (view === 'entries') {
       await page.getByLabel('Search descriptions').fill('expired session');
@@ -729,6 +731,13 @@ test('draft-to-match confirmation blocks final import until resolved', async ({ 
   await row.getByRole('button', { name: 'Match fixture', exact: true }).click();
   await row.getByLabel('Description', { exact: true }).fill('Draft wording');
   await row.getByRole('button', { name: 'Save description', exact: true }).click();
+  await row.getByRole('button', { name: 'Add labels to Draft wording', exact: true }).click();
+  await row.getByRole('button', { name: 'All labels…', exact: true }).click();
+  await row.getByLabel('Find or create a label').fill('Discarded import label fixture');
+  await row
+    .getByRole('button', { name: 'Create “Discarded import label fixture”', exact: true })
+    .click();
+  await row.getByRole('button', { name: 'Done', exact: true }).click();
   const matchValue = await row.locator('option[value^="match:"]').first().getAttribute('value');
   expect(matchValue).toBeTruthy();
   await row.locator('select').selectOption(matchValue!);
@@ -750,4 +759,116 @@ test('draft-to-match confirmation blocks final import until resolved', async ({ 
   expect(entries).toHaveLength(1);
   expect(entries[0].description).toBe('Match fixture');
   expect(entries[0].origin).toBe('manual');
+  expect(entries[0].labels).toEqual([]);
+});
+
+test('import category and label drafts support bulk edits and cancel without ledger writes', async ({
+  page,
+}, info) => {
+  await login(page, `${info.project.name}-user`);
+  await clean(page);
+  const token = await csrf(page);
+  const category = await page.request.post('/api/classification', {
+    headers: { 'X-CSRF-Token': token },
+    data: { kind: 'category', name: 'Import dining fixture', color: 'sage' },
+  });
+  expect(category.ok()).toBeTruthy();
+  const categoryId = (await category.json()).id;
+  const label = await page.request.post('/api/classification', {
+    headers: { 'X-CSRF-Token': token },
+    data: { kind: 'label', name: 'Import journey fixture', color: 'blue' },
+  });
+  expect(label.ok()).toBeTruthy();
+  const competing = await page.request.post('/api/classification', {
+    headers: { 'X-CSRF-Token': token },
+    data: { kind: 'category', name: 'Conflicting import fixture', color: 'sage' },
+  });
+  expect(competing.ok()).toBeTruthy();
+  const competingId = (await competing.json()).id;
+  for (const [name, target] of [
+    ['Dining suggestion fixture', categoryId],
+    ['Competing suggestion fixture', competingId],
+  ]) {
+    expect(
+      (
+        await page.request.post('/api/rules', {
+          headers: { 'X-CSRF-Token': token },
+          data: {
+            name,
+            operator: 'contains',
+            pattern: 'Synthetic imported dinner',
+            category_id: target,
+            label_ids: [],
+            enabled: true,
+          },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  }
+  await page.reload();
+  const csv =
+    'date,description,amount,external_id\n2026-11-01,Synthetic imported dinner,-40,classified-dinner\n2026-11-02,Synthetic imported lunch,-20,classified-lunch\n';
+  let dialog = await importFile(
+    page,
+    'classified-cancel.csv',
+    csv,
+    `Canceled classification ${info.project.name}`,
+  );
+  let row = dialog.locator('.review-row').filter({ hasText: 'Synthetic imported dinner' });
+  await row.getByRole('button', { name: /Change category for Synthetic imported dinner/ }).click();
+  await row.getByRole('button', { name: 'Import dining fixture', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Close import', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect((await (await page.request.get('/api/entries')).json()).entries).toHaveLength(0);
+  dialog = await importFile(
+    page,
+    'classified.csv',
+    csv,
+    `Classified additions ${info.project.name}`,
+  );
+  await expect(
+    dialog.getByRole('button', { name: 'Import 2 entries', exact: true }),
+  ).toBeDisabled();
+  await expect(dialog.getByText(/Choose a category for 1 selected entries/)).toBeVisible();
+  const bulk = dialog.getByRole('region', { name: 'Classify selected additions' });
+  await bulk.getByRole('button', { name: 'Set category', exact: true }).click();
+  await bulk
+    .getByLabel('Category for selected additions', { exact: true })
+    .selectOption(categoryId);
+  await bulk.getByRole('button', { name: 'Apply to 2 additions', exact: true }).click();
+  await bulk.getByRole('button', { name: 'Add labels', exact: true }).click();
+  await bulk.getByLabel('Import journey fixture', { exact: true }).check();
+  await bulk.getByRole('button', { name: 'Apply to 2 additions', exact: true }).click();
+  row = dialog.locator('.review-row').filter({ hasText: 'Synthetic imported dinner' });
+  await expect(
+    row.getByRole('button', { name: /Change category.*Import dining fixture/ }),
+  ).toBeVisible();
+  await expect(
+    row.getByRole('button', { name: 'Remove label Import journey fixture', exact: true }),
+  ).toBeAttached();
+  await row
+    .getByRole('button', { name: 'Add labels to Synthetic imported dinner', exact: true })
+    .click();
+  await row.getByRole('button', { name: 'All labels…', exact: true }).click();
+  await row.getByLabel('Find or create a label').fill('Dinner occasion fixture');
+  await row.getByRole('button', { name: 'Create “Dinner occasion fixture”', exact: true }).click();
+  await row.getByRole('button', { name: 'Done', exact: true }).click();
+  await dialog.screenshot({ path: `test-results/import-classification-${info.project.name}.png` });
+  await dialog.getByRole('button', { name: 'Import 2 entries', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const entries = (await (await page.request.get('/api/entries')).json()).entries;
+  expect(entries).toHaveLength(2);
+  expect(
+    entries.every((e: { category: { id: string } }) => e.category.id === categoryId),
+  ).toBeTruthy();
+  expect(
+    entries.find((e: { description: string }) => e.description === 'Synthetic imported dinner')
+      .labels,
+  ).toHaveLength(2);
+  const batches = await (await page.request.get('/api/imports/history')).json();
+  const detail = await (
+    await page.request.get(`/api/imports/history/${batches.batches[0].id}`)
+  ).json();
+  expect(detail.edited).toBe(0);
+  expect(detail.removable).toBe(2);
 });

@@ -1,18 +1,26 @@
 <script lang="ts">
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { onMount, tick } from 'svelte';
-  import { api, ApiError, type EntriesPage, type Source } from '#lib/api.ts';
+  import { api, ApiError, type EntriesPage, type Source, type Transaction } from '#lib/api.ts';
   import { localDate, money } from '#lib/money.ts';
+  import type { ClassificationCatalog } from '#lib/features/classification/types.ts';
   import EntriesList from './EntriesList.svelte';
+  import EntryClassificationFilters from './EntryClassificationFilters.svelte';
   let {
     sources,
+    catalog,
+    oncatalogchanged,
     always,
     refresh,
     onchanged,
+    oncreaterule,
     onunauthorized,
   }: {
     onunauthorized: () => void;
+    oncreaterule: (entry: Transaction) => void;
     sources: Source[];
+    catalog: ClassificationCatalog;
+    oncatalogchanged: () => Promise<void>;
     always: boolean;
     refresh: number;
     onchanged: (notice: string) => Promise<void>;
@@ -24,6 +32,13 @@
   let search = $state('');
   let appliedSearch = $state('');
   let page = $state(1);
+  let categoryIds = $state<string[]>([]);
+  let labelIds = $state<string[]>([]);
+  let uncategorized = $state(false);
+  let unlabeled = $state(false);
+  let labelMatch = $state('any');
+  let entryType = $state('all');
+  let loadedQuery = '';
   let data = $state<EntriesPage | null>(null);
   let loading = $state(false);
   let error = $state('');
@@ -35,6 +50,10 @@
   }
   onMount(() => {
     const params = new SvelteURLSearchParams(window.location.search);
+    categoryIds = params.get('category_ids')?.split(',').filter(Boolean) ?? [];
+    uncategorized = params.get('uncategorized') === 'true';
+    const requestedType = params.get('entry_type');
+    if (requestedType === 'spending' || requestedType === 'income') entryType = requestedType;
     if (params.has('all') || params.has('start') || params.has('end')) {
       start = params.get('start') ?? '';
       end = params.get('end') ?? '';
@@ -57,6 +76,12 @@
       if (end) params.set('end', end);
     }
     if (appliedSearch) params.set('q', appliedSearch);
+    if (categoryIds.length) params.set('category_ids', categoryIds.join(','));
+    if (labelIds.length) params.set('label_ids', labelIds.join(','));
+    if (uncategorized) params.set('uncategorized', 'true');
+    if (unlabeled) params.set('unlabeled', 'true');
+    params.set('label_match', labelMatch);
+    params.set('entry_type', entryType);
     return params.toString();
   });
   $effect(() => {
@@ -64,12 +89,15 @@
     void refresh;
     void retry;
     let active = true;
-    loading = true;
+    let previouslyFocused: Element | null = null;
+    loading = path !== loadedQuery;
     error = '';
     api<EntriesPage>(`/entries?${path}`)
       .then((result) => {
         if (active) {
+          previouslyFocused = document.activeElement;
           data = result;
+          loadedQuery = path;
           page = result.page;
         }
       })
@@ -88,6 +116,8 @@
               document.getElementById(pendingFocus) ?? document.getElementById('ledger-heading')
             )?.focus();
             pendingFocus = undefined;
+          } else if (active && previouslyFocused && !previouslyFocused.isConnected) {
+            document.getElementById('ledger-heading')?.focus();
           }
         }
       });
@@ -151,6 +181,16 @@
     </label><button class="button">Search</button>
   </form>
 </section>
+<EntryClassificationFilters
+  {catalog}
+  bind:entryType
+  bind:categoryIds
+  bind:labelIds
+  bind:uncategorized
+  bind:unlabeled
+  bind:labelMatch
+  onchange={() => (page = 1)}
+/>
 <p class="muted">
   {period === 'custom' && !start && !end
     ? 'All recorded history'
@@ -186,9 +226,13 @@
       <span class="muted">{data.totals.transaction_count} matching</span>
     </div>
     {#if data.entries.length}
-      {#key `${query}:${refresh}`}<EntriesList
+      {#key query}<EntriesList
           entries={data.entries}
           {sources}
+          {catalog}
+          {oncreaterule}
+          {refresh}
+          {oncatalogchanged}
           {always}
           scope="this page"
           onchanged={changed}

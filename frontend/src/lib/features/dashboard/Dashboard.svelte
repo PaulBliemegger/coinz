@@ -1,8 +1,11 @@
 <script lang="ts">
+  import LabelChip from '#lib/features/classification/LabelChip.svelte';
   import { resolve } from '$app/paths';
   import { api, ApiError, type DashboardData } from '#lib/api.ts';
   import { localDate, money, monthLabel, dateLabel } from '#lib/money.ts';
   import MonthPicker from './MonthPicker.svelte';
+  import MonthlySummary from './MonthlySummary.svelte';
+  import SpendingByCategory from './SpendingByCategory.svelte';
   let {
     refresh,
     onadd,
@@ -55,25 +58,11 @@
   </p>
 {:else if loading}<p role="status">Gathering the usual suspects…</p>
 {:else if data}
-  <section class="month-summary" aria-label="Monthly summary">
-    <div class="spending-total">
-      <p class="eyebrow">RECORDED SPENDING</p>
-      <p class="hero-amount" data-testid="spending">{money(data.monthly.spending_cents)}</p>
-      <p class="muted">{monthLabel(data.month)} · {data.monthly.transaction_count} entries</p>
-    </div>
-    <div class="secondary-total">
-      <p>Recorded income</p>
-      <strong data-testid="income">{money(data.monthly.income_cents)}</strong><span class="muted">
-        Same month. Different direction.
-      </span>
-    </div>
-    <div class="secondary-total">
-      <p>Income minus spending</p>
-      <strong data-testid="net">{money(data.monthly.net_cents, true)}</strong><span class="muted">
-        Recorded net, not your bank balance
-      </span>
-    </div>
-  </section>
+  <MonthlySummary month={data.month} totals={data.monthly} />
+  {#key data.month}<SpendingByCategory month={data.month} items={data.spending_categories} />{/key}
+  <a class="view-all" href={resolve(`/insights?month=${data.month}`)}>
+    Explore insights <span aria-hidden="true">→</span>
+  </a>
   <section class="ledger annual" aria-labelledby="annual-heading">
     <div class="section-heading">
       <div>
@@ -132,7 +121,12 @@
     {:else}<ul class="latest-entries">
         {#each data.latest as entry (entry.id)}<li>
             <div>
-              <strong>{entry.description}</strong><span class="muted">{dateLabel(entry.date)}</span>
+              <strong>{entry.description}</strong><span class="muted">
+                {dateLabel(entry.date)} · {entry.category?.name ?? 'Uncategorized'}
+              </span>
+              <div class="entry-labels">
+                {#each entry.labels as item (item.id)}<LabelChip {item} />{/each}
+              </div>
             </div>
             <strong class:income={BigInt(entry.amount_cents) > 0n}>
               {money(entry.amount_cents, true)}

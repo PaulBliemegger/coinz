@@ -11,7 +11,7 @@ export const rowSelection: Action<HTMLElement, Selection> = (node, initial) => {
     if (
       !(target instanceof Element) ||
       target.closest(
-        'button,input,select,textarea,label,form,a,summary,[role="button"],[contenteditable]',
+        'button,input,select,textarea,label,form,a,summary,[role="button"],[contenteditable],[data-entry-controls]',
       )
     )
       return;

@@ -1,3 +1,5 @@
+import type { RuleSuggestions } from '#lib/features/rules/types.ts';
+import type { ClassificationItem } from '#lib/features/classification/types.ts';
 export interface User {
   id: string;
   username: string;
@@ -12,6 +14,8 @@ export interface Source {
   latest_transaction_date: string | null;
 }
 export interface Transaction {
+  category: ClassificationItem | null;
+  labels: ClassificationItem[];
   id: string;
   source_id: string | null;
   source_name: string | null;
@@ -30,6 +34,7 @@ export interface Summary {
 }
 
 export interface ImportRow {
+  rule_suggestions?: RuleSuggestions;
   record: number;
   date: string;
   description: string;
@@ -126,6 +131,22 @@ export interface DashboardData {
   latest: Transaction[];
   latest_date: string | null;
   latest_import: string | null;
+  spending_categories: CategorySpending[];
+}
+export interface CategorySpending {
+  category: ClassificationItem | null;
+  spending_cents: string;
+  entry_count: number;
+  share_percent: string;
+}
+export interface TrendMonth extends Totals {
+  month: string;
+  category_spending_cents: string;
+  category_entry_count: number;
+}
+export interface InsightTrends {
+  category: ClassificationItem | null;
+  months: TrendMonth[];
 }
 export interface ImportBatch {
   id: string;

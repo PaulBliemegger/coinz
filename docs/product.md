@@ -10,8 +10,12 @@ account balances. Building and learning are also part of the project's value.
 ## Current implementation
 
 Local user creation, login/logout, isolated private data, manual income/expenses,
-editing/deleting entries, a home dashboard with monthly/yearly spending, a
-paginated Entries workspace with period/search filters, exact money handling,
+editing/deleting entries, a home dashboard with monthly/yearly spending and a
+monthly category spending breakdown linking to Entries, an Insights page with
+the full monthly category report, rolling income/expense and category trends, a
+paginated Entries workspace with period/search/category/label filters, categories
+and coloured labels with setup, management, counted deletion and import-review
+drafts, local labeling rules with previewed history application, exact money handling,
 and reusable CSV import profiles with guided column mapping, editable review,
 duplicate protection and batch history. Profiles can also be created/edited
 directly in Imports without a file. A source
@@ -26,7 +30,7 @@ behavior lives in the feature specs.
 The account/snapshot interface and API are retired. Existing account identities
 become transaction sources; old opening amounts and snapshots are preserved as
 inactive legacy records. See the [manual-ledger spec](specs/manual-ledger.md).
-Planning, bank-specific import adapters, labels,
+Planning, bank-specific import adapters,
 and richer insights are not yet implemented. The
 [example importer](specs/csv-import.md) provides a synthetic workflow for testing
 the next ideas.
@@ -68,12 +72,18 @@ explicit available amount/date plus future assumptions; it is not a prerequisite
 for planning. Historical reconstructed balances and ongoing reconciliation are
 out of the core scope. Historical monthly income/spending/net need no balance anchor.
 
-## Labels and insights
+## Categories, labels, and insights
 
-Start with multiple labels per transaction, not a mandatory category tree. Combined
-any/all-label filters count a transaction once. Separate label totals may overlap;
-do not add them as a spending total or render them as exclusive pie slices.
-Choose additional views based on useful questions raised by actual use.
+Each entry has one category bucket (Uncategorized allowed) plus optional labels.
+Categories partition spending; labels express overlapping connections such as an
+occasion or subscription. No mandatory category hierarchy. Sources stay optional
+and secondary. Setup is skippable; recording never depends on organization.
+[Categories and labels](specs/classification.md) owns management, assignment,
+filtering, import-review drafts and overlap semantics.
+[Local labeling rules](specs/labeling-rules.md) owns deterministic suggestions,
+conflicts and explicit history application. Home's first category insight and
+the Insights page are defined in [reporting](specs/reporting.md); automatic period comparisons,
+label analysis and richer reports remain proposed.
 
 Transfers between the owner's accounts should ultimately be excluded from income
 and spending, while linked refunds reduce the relevant spending. Dedicated types
@@ -115,7 +125,8 @@ concern. See [entry export and reimport](specs/data-portability.md).
 Current implemented behavior is summarized above and detailed in the
 [specification index](specs/README.md). Work on one coherent slice at a time:
 
-1. Add labels, bulk labeling, and useful insight reports through separate slices.
+1. Extend [categories and labels](specs/classification.md) with useful insight
+   reports in separate slices; local rules are implemented.
    [CSV import profiles](specs/import-profiles.md) now provide reusable layouts.
    N26/Erste remain target export streams; define transfer/refund treatment before
    supporting real bank formats.

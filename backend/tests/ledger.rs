@@ -563,8 +563,101 @@ async fn migration_preserves_sources_entries_and_retired_balance_records() {
     );
 }
 
-const DEMO_CSV: &str = include_str!("../../examples/imports/demo.csv");
-const OVERLAP_CSV: &str = include_str!("../../examples/imports/demo-overlap.csv");
+const SMALL_IMPORT_CSV: &str = include_str!("fixtures/import-regression.csv");
+const SMALL_OVERLAP_CSV: &str = include_str!("fixtures/import-regression-overlap.csv");
+
+#[tokio::test]
+async fn expanded_demo_imports_rules_reports_repeats_and_overlap() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let source = alice.source("Expanded synthetic demo").await;
+    let food = classification_item(&mut alice, "category", "Eating out").await;
+    let optional = classification_item(&mut alice, "label", "Discretionary").await;
+    label_rule(&mut alice, "Coffee demo", &food, &[&optional], None).await;
+    let demo = include_str!("../../examples/imports/demo.csv");
+    let overlap = include_str!("../../examples/imports/demo-overlap.csv");
+    let mut input = import_input(&source, demo, json!([]));
+    let (status, preview) = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["rows"].as_array().unwrap().len(), 106);
+    assert!(
+        preview["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["status"] == "new")
+    );
+    input["rules_revision"] = preview["rules_revision"].clone();
+    let (status, committed) = alice
+        .call("POST", "/api/imports/commit", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{committed}");
+    assert_eq!(committed["added"], 106);
+    for (month, count, income, spending) in [
+        ("2026-09", 37, "240000", "191433"),
+        ("2026-10", 34, "240000", "170448"),
+        ("2026-11", 35, "258500", "159688"),
+    ] {
+        let (status, report) = alice
+            .call("GET", &format!("/api/dashboard?month={month}"), None)
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(report["monthly"]["transaction_count"], count);
+        assert_eq!(report["monthly"]["income_cents"], income);
+        assert_eq!(report["monthly"]["spending_cents"], spending);
+        let coffee = report["spending_categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["category"]["id"] == food)
+            .unwrap();
+        assert_eq!(coffee["entry_count"], 3);
+        assert_eq!(coffee["spending_cents"], "1380");
+    }
+    let coffees = alice
+        .call(
+            "GET",
+            "/api/entries?start=2026-11-07&end=2026-11-07&q=Flat%20white",
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(coffees["totals"]["transaction_count"], 2);
+    assert_eq!(coffees["totals"]["spending_cents"], "760");
+    assert!(
+        coffees["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["labels"][0]["id"] == optional)
+    );
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .1["known"],
+        106
+    );
+    let result = import_ok(&mut alice, &source, overlap, json!([])).await;
+    assert_eq!(result["added"], 1);
+    assert_eq!(result["known"], 3);
+    assert_eq!(
+        alice
+            .call("GET", "/api/dashboard?month=2026-11", None)
+            .await
+            .1["monthly"]["spending_cents"],
+        "161288"
+    );
+    assert_eq!(
+        bob.call("GET", "/api/dashboard?month=2026-11", None)
+            .await
+            .1["spending_categories"],
+        json!([])
+    );
+}
 
 fn import_input(source: &str, csv: &str, decisions: Value) -> Value {
     json!({"source_id":source,"csv":csv,"decisions":decisions})
@@ -591,7 +684,7 @@ async fn imports_preview_repeat_overlap_and_preserve_edits_and_deletions() {
         .call(
             "POST",
             "/api/imports/preview",
-            Some(import_input(&source, DEMO_CSV, json!([]))),
+            Some(import_input(&source, SMALL_IMPORT_CSV, json!([]))),
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{preview}");
@@ -611,7 +704,7 @@ async fn imports_preview_repeat_overlap_and_preserve_edits_and_deletions() {
         0
     );
     assert_eq!(
-        import_ok(&mut alice, &source, DEMO_CSV, json!([])).await["added"],
+        import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await["added"],
         16
     );
     for (month, spending, net) in [
@@ -627,10 +720,10 @@ async fn imports_preview_repeat_overlap_and_preserve_edits_and_deletions() {
         assert_eq!(summary["net_cents"], net);
         assert_eq!(summary["transaction_count"], 8);
     }
-    let repeated = import_ok(&mut alice, &source, DEMO_CSV, json!([])).await;
+    let repeated = import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await;
     assert_eq!(repeated["added"], 0);
     assert_eq!(repeated["known"], 16);
-    let overlap = import_ok(&mut alice, &source, OVERLAP_CSV, json!([])).await;
+    let overlap = import_ok(&mut alice, &source, SMALL_OVERLAP_CSV, json!([])).await;
     assert_eq!(overlap["added"], 1);
     assert_eq!(overlap["known"], 3);
     let summary = alice
@@ -667,7 +760,7 @@ async fn imports_preview_repeat_overlap_and_preserve_edits_and_deletions() {
             .0,
         StatusCode::NO_CONTENT
     );
-    let changed_file = format!("{}\n", OVERLAP_CSV.replace('\n', "\r\n"));
+    let changed_file = format!("{}\n", SMALL_OVERLAP_CSV.replace('\n', "\r\n"));
     let result = import_ok(&mut alice, &source, &changed_file, json!([])).await;
     assert_eq!(result["added"], 1);
     assert_eq!(result["known"], 3);
@@ -848,7 +941,7 @@ async fn imports_enforce_source_match_ownership_csrf_limits_and_concurrent_idemp
             bob.call(
                 "POST",
                 &path,
-                Some(import_input(&source, DEMO_CSV, json!([])))
+                Some(import_input(&source, SMALL_IMPORT_CSV, json!([])))
             )
             .await
             .0,
@@ -859,7 +952,7 @@ async fn imports_enforce_source_match_ownership_csrf_limits_and_concurrent_idemp
                 .send(
                     "POST",
                     &path,
-                    Some(import_input(&source, DEMO_CSV, json!([]))),
+                    Some(import_input(&source, SMALL_IMPORT_CSV, json!([]))),
                     false,
                     ORIGIN
                 )
@@ -893,7 +986,7 @@ async fn imports_enforce_source_match_ownership_csrf_limits_and_concurrent_idemp
         0
     );
     let mut parallel = alice.clone();
-    let a = import_input(&source, DEMO_CSV, json!([]));
+    let a = import_input(&source, SMALL_IMPORT_CSV, json!([]));
     let b = a.clone();
     let (first, second) = tokio::join!(
         alice.call("POST", "/api/imports/commit", Some(a)),
@@ -909,7 +1002,7 @@ async fn imports_enforce_source_match_ownership_csrf_limits_and_concurrent_idemp
         .call(
             "POST",
             "/api/imports/preview",
-            Some(import_input(&bob_source, DEMO_CSV, json!([]))),
+            Some(import_input(&bob_source, SMALL_IMPORT_CSV, json!([]))),
         )
         .await
         .1;
@@ -922,7 +1015,7 @@ async fn imports_enforce_source_match_ownership_csrf_limits_and_concurrent_idemp
     );
     let another_source = alice.source("Separate stream").await;
     assert_eq!(
-        import_ok(&mut alice, &another_source, DEMO_CSV, json!([])).await["added"],
+        import_ok(&mut alice, &another_source, SMALL_IMPORT_CSV, json!([])).await["added"],
         16
     );
     // Valid JSON larger than the ledger's 16 KiB limit reaches the importer.
@@ -1277,7 +1370,7 @@ async fn inline_fields_provenance_and_bulk_deletion_enforce_ownership_and_atomic
             .0,
         StatusCode::FORBIDDEN
     );
-    import_ok(&mut alice, &source, DEMO_CSV, json!([])).await;
+    import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await;
     let rows = alice
         .call("GET", "/api/transactions?month=2026-11", None)
         .await
@@ -1357,7 +1450,7 @@ async fn inline_fields_provenance_and_bulk_deletion_enforce_ownership_and_atomic
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        import_ok(&mut alice, &source, DEMO_CSV, json!([])).await["added"],
+        import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await["added"],
         1
     );
     assert_eq!(
@@ -1376,7 +1469,7 @@ async fn deleting_all_imported_entries_allows_full_reimport_and_migration_clears
     let h = Harness::new().await;
     let mut alice = h.client("alice").await;
     let source = alice.source("Synthetic reimport").await;
-    import_ok(&mut alice, &source, DEMO_CSV, json!([])).await;
+    import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await;
     let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM transactions")
         .fetch_all(&h.pool)
         .await
@@ -1393,7 +1486,7 @@ async fn deleting_all_imported_entries_allows_full_reimport_and_migration_clears
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        import_ok(&mut alice, &source, DEMO_CSV, json!([])).await["added"],
+        import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await["added"],
         16
     );
     // Recreate the old deletion behavior in this wholly synthetic temporary database.
@@ -1421,7 +1514,7 @@ async fn deleting_all_imported_entries_allows_full_reimport_and_migration_clears
     .await
     .unwrap();
     assert_eq!(
-        import_ok(&mut alice, &source, DEMO_CSV, json!([])).await["added"],
+        import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await["added"],
         16
     );
 }
@@ -1432,7 +1525,7 @@ async fn workspace_pagination_totals_dates_search_and_dashboard_are_owned() {
     let mut alice = h.client("alice").await;
     let mut bob = h.client("bob").await;
     let source = alice.source("Report fixture").await;
-    import_ok(&mut alice, &source, DEMO_CSV, json!([])).await;
+    import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await;
     bob.entry(None, "2026-11-01", "9999", "expense").await;
     let (status, first) = alice.call("GET", "/api/entries?page_size=5", None).await;
     assert_eq!(status, StatusCode::OK, "{first}");
@@ -2294,5 +2387,1347 @@ async fn profile_drafts_do_not_change_matching_or_existing_entries() {
             .await
             .1["rows"][0]["status"],
         "known"
+    );
+}
+
+async fn classification_item(client: &mut Client, kind: &str, name: &str) -> String {
+    let (status, value) = client
+        .call(
+            "POST",
+            "/api/classification",
+            Some(json!({"kind":kind,"name":name,"color":"blue"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{value}");
+    value["id"].as_str().unwrap().to_owned()
+}
+async fn classify(client: &mut Client, input: Value) {
+    let (status, value) = client
+        .call("POST", "/api/transactions/classify", Some(input))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{value}");
+}
+
+#[tokio::test]
+async fn insight_trends_cover_rolling_months_categories_ownership_and_boundaries() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let food = classification_item(&mut alice, "category", "Food trend").await;
+    let tag = classification_item(&mut alice, "label", "Shared").await;
+    let tag2 = classification_item(&mut alice, "label", "Other").await;
+    let foreign = classification_item(&mut bob, "category", "Foreign trend").await;
+    for (date, amount, kind) in [
+        ("2025-10-31", "12.34", "expense"),
+        ("2025-12-31", "10", "expense"),
+        ("2026-01-01", "20", "expense"),
+        ("2026-01-31", "100", "income"),
+    ] {
+        let entry = alice.entry(None, date, amount, kind).await;
+        classify(
+            &mut alice,
+            json!({"ids":[entry],"action":"set_category","category_id":food}),
+        )
+        .await;
+        classify(
+            &mut alice,
+            json!({"ids":[entry],"action":"add_labels","label_ids":[tag,tag2]}),
+        )
+        .await;
+    }
+    alice.entry(None, "2026-03-31", "5", "expense").await;
+    alice.entry(None, "2025-09-30", "999", "expense").await;
+    alice.entry(None, "2026-04-01", "888", "expense").await;
+    bob.entry(None, "2026-01-01", "9999", "expense").await;
+    alice
+        .call(
+            "PUT",
+            &format!("/api/classification/{food}"),
+            Some(json!({"name":"Food trend","color":"blue","archived":true})),
+        )
+        .await;
+    let path = format!("/api/insights/trends?month=2026-03&months=6&category_id={food}");
+    let (status, report) = alice.call("GET", &path, None).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["category"]["archived"], true);
+    let months = report["months"].as_array().unwrap();
+    assert_eq!(months.len(), 6);
+    assert_eq!(months[0]["month"], "2025-10");
+    assert_eq!(months[5]["month"], "2026-03");
+    assert_eq!(
+        months
+            .iter()
+            .map(|m| m["category_spending_cents"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["1234", "0", "1000", "2000", "0", "0"]
+    );
+    assert_eq!(months[1]["transaction_count"], 0);
+    assert_eq!(months[3]["income_cents"], "10000");
+    assert_eq!(months[3]["spending_cents"], "2000");
+    assert_eq!(months[3]["net_cents"], "8000");
+    assert_eq!(months[3]["category_entry_count"], 1);
+    let expenses = alice.call("GET", &format!("/api/entries?start=2026-01-01&end=2026-01-31&category_ids={food}&entry_type=spending"), None).await.1;
+    assert_eq!(
+        expenses["totals"]["spending_cents"],
+        months[3]["category_spending_cents"]
+    );
+    let uncategorized = alice
+        .call("GET", "/api/insights/trends?month=2026-03", None)
+        .await
+        .1;
+    assert_eq!(uncategorized["category"], Value::Null);
+    assert_eq!(uncategorized["months"][5]["category_spending_cents"], "500");
+    assert_eq!(uncategorized["months"][3]["category_spending_cents"], "0");
+    for (filter, expected) in [
+        (
+            format!("month=2026-03&category_id={foreign}"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            format!("month=2026-03&category_id={tag}"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "month=2026-03&category_id=bad".into(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "month=2026-03&months=5".into(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        ("month=0000-01".into(), StatusCode::UNPROCESSABLE_ENTITY),
+        ("month=2026-13".into(), StatusCode::UNPROCESSABLE_ENTITY),
+    ] {
+        assert_eq!(
+            alice
+                .call("GET", &format!("/api/insights/trends?{filter}"), None)
+                .await
+                .0,
+            expected
+        );
+    }
+    let minimum = alice
+        .call("GET", "/api/insights/trends?month=0001-02&months=12", None)
+        .await
+        .1;
+    assert_eq!(minimum["months"].as_array().unwrap().len(), 2);
+    assert_eq!(minimum["months"][0]["month"], "0001-01");
+    alice.entry(None, "9999-12-31", "0.01", "expense").await;
+    let maximum = alice
+        .call("GET", "/api/insights/trends?month=9999-12&months=12", None)
+        .await
+        .1;
+    assert_eq!(maximum["months"].as_array().unwrap().len(), 12);
+    assert_eq!(maximum["months"][11]["spending_cents"], "1");
+    let other = bob
+        .call("GET", "/api/insights/trends?month=2026-03", None)
+        .await
+        .1;
+    assert_eq!(other["months"][3]["spending_cents"], "999900");
+    let mut anonymous = Client {
+        app: h.app.clone(),
+        cookie: None,
+        csrf: None,
+    };
+    assert_eq!(
+        anonymous.call("GET", &path, None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn insight_trends_preserve_large_cents_and_reject_monthly_overflow() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    alice
+        .entry(None, "2026-11-01", "90071992547409.92", "expense")
+        .await;
+    alice.entry(None, "2026-11-02", "0.01", "expense").await;
+    let report = alice
+        .call("GET", "/api/insights/trends?month=2026-11", None)
+        .await
+        .1;
+    assert_eq!(
+        report["months"][5]["category_spending_cents"],
+        "9007199254740993"
+    );
+    assert_eq!(report["months"][5]["net_cents"], "-9007199254740993");
+    bob.entry(None, "2026-11-01", "92233720368547758.07", "expense")
+        .await;
+    bob.entry(None, "2026-11-02", "0.01", "expense").await;
+    assert_eq!(
+        bob.call("GET", "/api/insights/trends?month=2026-11", None)
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+#[tokio::test]
+async fn category_spending_partitions_month_and_drills_into_owned_expenses() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let food = classification_item(&mut alice, "category", "Groceries").await;
+    let travel = classification_item(&mut alice, "category", "Travel").await;
+    let unused = classification_item(&mut alice, "category", "Unused").await;
+    let label_a = classification_item(&mut alice, "label", "Essential").await;
+    let label_b = classification_item(&mut alice, "label", "Local").await;
+    let first = alice.entry(None, "2026-11-01", "100.01", "expense").await;
+    let last = alice.entry(None, "2026-11-30", "0.02", "expense").await;
+    let train = alice.entry(None, "2026-11-15", "25", "expense").await;
+    let income = alice.entry(None, "2026-11-15", "500", "income").await;
+    alice.entry(None, "2026-11-20", "25", "expense").await;
+    alice.entry(None, "2026-10-31", "999", "expense").await;
+    alice.entry(None, "2026-12-01", "999", "expense").await;
+    alice.entry(None, "2026-01-01", "500", "income").await;
+    let foreign = bob.entry(None, "2026-11-01", "9999", "expense").await;
+    let foreign_category = classification_item(&mut bob, "category", "Private category").await;
+    classify(
+        &mut bob,
+        json!({"ids":[foreign],"action":"set_category","category_id":foreign_category}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[first,last,income],"action":"set_category","category_id":food}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[train],"action":"set_category","category_id":travel}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[first],"action":"add_labels","label_ids":[label_a,label_b]}),
+    )
+    .await;
+    assert_eq!(
+        alice
+            .call(
+                "PUT",
+                &format!("/api/classification/{travel}"),
+                Some(json!({"name":"Travel","color":"blue","archived":true}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+
+    let (status, dashboard) = alice
+        .call("GET", "/api/dashboard?month=2026-11", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{dashboard}");
+    let categories = dashboard["spending_categories"].as_array().unwrap();
+    assert_eq!(categories.len(), 3); // Unused categories are not empty bars.
+    assert!(categories.iter().all(|r| r["category"]["id"] != unused));
+    assert_eq!(categories[0]["category"]["id"], food);
+    assert_eq!(categories[0]["spending_cents"], "10003");
+    assert_eq!(categories[0]["entry_count"], 2);
+    assert_eq!(categories[0]["share_percent"], "66.7");
+    assert_eq!(categories[1]["category"]["id"], travel);
+    assert_eq!(categories[1]["category"]["archived"], true);
+    assert_eq!(categories[2]["category"], Value::Null);
+    assert_eq!(categories[2]["spending_cents"], "2500");
+    assert_eq!(categories[2]["share_percent"], "16.7");
+    let sum: i64 = categories
+        .iter()
+        .map(|r| {
+            r["spending_cents"]
+                .as_str()
+                .unwrap()
+                .parse::<i64>()
+                .unwrap()
+        })
+        .sum();
+    assert_eq!(sum.to_string(), dashboard["monthly"]["spending_cents"]);
+    assert_eq!(sum, 15003);
+    for row in categories {
+        let filter = row["category"]["id"]
+            .as_str()
+            .map_or("uncategorized=true".into(), |id| {
+                format!("category_ids={id}")
+            });
+        let path = format!(
+            "/api/entries?start=2026-11-01&end=2026-11-30&entry_type=spending&{filter}&page_size=1"
+        );
+        let (status, entries) = alice.call("GET", &path, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(entries["totals"]["spending_cents"], row["spending_cents"]);
+        assert_eq!(entries["totals"]["transaction_count"], row["entry_count"]);
+        assert_eq!(entries["totals"]["income_cents"], "0");
+    }
+    let income = alice
+        .call(
+            "GET",
+            &format!(
+                "/api/entries?start=2026-11-01&end=2026-11-30&entry_type=income&category_ids={food}"
+            ),
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(income["totals"]["income_cents"], "50000");
+    assert_eq!(income["totals"]["spending_cents"], "0");
+    assert_eq!(
+        alice
+            .call("GET", "/api/entries?entry_type=invalid", None)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        alice
+            .call(
+                "GET",
+                &format!("/api/entries?entry_type=spending&category_ids={foreign_category}"),
+                None
+            )
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let other = bob
+        .call("GET", "/api/dashboard?month=2026-11", None)
+        .await
+        .1;
+    assert_eq!(other["spending_categories"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        other["spending_categories"][0]["category"]["id"],
+        foreign_category
+    );
+    for month in ["2026-01", "2025-01"] {
+        let empty = alice
+            .call("GET", &format!("/api/dashboard?month={month}"), None)
+            .await
+            .1;
+        assert_eq!(empty["spending_categories"], json!([]));
+    }
+    let max_date = alice.entry(None, "9999-12-31", "0.01", "expense").await;
+    classify(
+        &mut alice,
+        json!({"ids":[max_date],"action":"set_category","category_id":food}),
+    )
+    .await;
+    let maximum = alice
+        .call("GET", "/api/dashboard?month=9999-12", None)
+        .await
+        .1;
+    assert_eq!(maximum["spending_categories"][0]["spending_cents"], "1");
+}
+
+#[tokio::test]
+async fn category_spending_preserves_cents_above_javascript_integer_precision() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    alice
+        .entry(None, "2026-11-01", "90071992547409.92", "expense")
+        .await;
+    alice.entry(None, "2026-11-02", "0.01", "expense").await;
+    let (status, dashboard) = alice
+        .call("GET", "/api/dashboard?month=2026-11", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{dashboard}");
+    assert_eq!(
+        dashboard["spending_categories"][0]["spending_cents"],
+        "9007199254740993"
+    );
+    assert_eq!(
+        dashboard["spending_categories"][0]["share_percent"],
+        "100.0"
+    );
+}
+
+#[tokio::test]
+async fn classification_partitions_categories_without_multiplying_overlapping_labels() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let food = classification_item(&mut alice, "category", "Eating out").await;
+    let hotel = classification_item(&mut alice, "category", "Accommodation").await;
+    let italy = classification_item(&mut alice, "label", "Italy 2027").await;
+    let holiday = classification_item(&mut alice, "label", "Holiday").await;
+    let dinner = alice.entry(None, "2026-11-01", "40", "expense").await;
+    let room = alice.entry(None, "2026-11-02", "120", "expense").await;
+    alice.entry(None, "2026-11-03", "25", "expense").await;
+    bob.entry(None, "2026-11-01", "999", "expense").await;
+    classify(
+        &mut alice,
+        json!({"ids":[dinner],"action":"set_category","category_id":food}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[room],"action":"set_category","category_id":hotel}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[dinner,room],"action":"add_labels","label_ids":[italy]}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[dinner],"action":"add_labels","label_ids":[holiday]}),
+    )
+    .await;
+    let any = alice
+        .call(
+            "GET",
+            &format!("/api/entries?label_ids={italy},{holiday}&label_match=any&page_size=1"),
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(any["totals"]["spending_cents"], "16000");
+    assert_eq!(any["totals"]["transaction_count"], 2);
+    assert_eq!(any["entries"].as_array().unwrap().len(), 1);
+    let all = alice
+        .call(
+            "GET",
+            &format!("/api/entries?label_ids={italy},{holiday}&label_match=all"),
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(all["totals"]["spending_cents"], "4000");
+    assert_eq!(all["entries"][0]["category"]["id"], food);
+    assert_eq!(all["entries"][0]["labels"].as_array().unwrap().len(), 2);
+    let uncategorized = alice
+        .call(
+            "GET",
+            "/api/entries?uncategorized=true&unlabeled=true",
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(uncategorized["totals"]["spending_cents"], "2500");
+    let combined = alice
+        .call(
+            "GET",
+            &format!("/api/entries?category_ids={food},{hotel}&uncategorized=true"),
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(combined["totals"]["spending_cents"], "18500");
+    classify(
+        &mut alice,
+        json!({"ids":[dinner],"action":"set_category","category_id":hotel}),
+    )
+    .await;
+    let empty = alice
+        .call("GET", &format!("/api/entries?category_ids={food}"), None)
+        .await
+        .1;
+    assert_eq!(empty["totals"]["spending_cents"], "0");
+    classify(
+        &mut alice,
+        json!({"ids":[dinner],"action":"remove_labels","label_ids":[holiday]}),
+    )
+    .await;
+    let retained = alice
+        .call("GET", &format!("/api/entries?label_ids={italy}"), None)
+        .await
+        .1;
+    assert_eq!(retained["totals"]["spending_cents"], "16000");
+    assert_eq!(
+        bob.call("GET", "/api/classification", None).await.1["labels"],
+        json!([])
+    );
+    assert_eq!(
+        bob.call("GET", &format!("/api/entries?label_ids={italy}"), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn classification_ownership_archiving_validation_and_atomicity() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let label = classification_item(&mut alice, "label", "Italy").await;
+    let category = classification_item(&mut alice, "category", "Food").await;
+    let entry = alice.entry(None, "2026-11-01", "10", "expense").await;
+    let foreign = bob.entry(None, "2026-11-01", "20", "expense").await;
+    for input in [
+        json!({"ids":[entry,foreign],"action":"add_labels","label_ids":[label]}),
+        json!({"ids":[entry],"action":"add_labels","label_ids":[category]}),
+    ] {
+        assert_eq!(
+            alice
+                .call("POST", "/api/transactions/classify", Some(input))
+                .await
+                .0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["entries"][0]["labels"],
+        json!([])
+    );
+    assert_eq!(
+        bob.call(
+            "PUT",
+            &format!("/api/classification/{label}"),
+            Some(json!({"name":"Other","color":"sage","archived":true}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        alice
+            .send(
+                "POST",
+                "/api/transactions/classify",
+                Some(json!({"ids":[entry],"action":"add_labels","label_ids":[label]})),
+                false,
+                ORIGIN
+            )
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    classify(
+        &mut alice,
+        json!({"ids":[entry],"action":"add_labels","label_ids":[label]}),
+    )
+    .await;
+    let revision: i64 = sqlx::query_scalar("SELECT revision FROM transactions WHERE id=?")
+        .bind(&entry)
+        .fetch_one(&h.pool)
+        .await
+        .unwrap();
+    classify(
+        &mut alice,
+        json!({"ids":[entry],"action":"add_labels","label_ids":[label]}),
+    )
+    .await;
+    let unchanged: i64 = sqlx::query_scalar("SELECT revision FROM transactions WHERE id=?")
+        .bind(&entry)
+        .fetch_one(&h.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        revision, unchanged,
+        "adding an existing label is not an edit"
+    );
+    assert_eq!(
+        alice
+            .call(
+                "PUT",
+                &format!("/api/classification/{label}"),
+                Some(json!({"name":"Italy 2027","color":"clay","archived":true}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let entries = alice
+        .call("GET", &format!("/api/entries?label_ids={label}"), None)
+        .await
+        .1;
+    assert_eq!(entries["entries"][0]["labels"][0]["name"], "Italy 2027");
+    assert_eq!(entries["entries"][0]["labels"][0]["archived"], true);
+    let second = alice.entry(None, "2026-11-02", "5", "expense").await;
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/transactions/classify",
+                Some(json!({"ids":[second],"action":"add_labels","label_ids":[label]}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    for input in [
+        json!({"kind":"label","name":"  ITALY 2027  ","color":"blue"}),
+        json!({"kind":"category","name":" Uncategorized ","color":"sage"}),
+        json!({"kind":"label","name":"Invalid","color":"neon"}),
+    ] {
+        assert_eq!(
+            alice
+                .call("POST", "/api/classification", Some(input))
+                .await
+                .0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/transactions/classify",
+                Some(json!({"ids":[entry,entry],"action":"set_category","category_id":category}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice
+            .call(
+                "GET",
+                &format!("/api/entries?label_ids={label}&unlabeled=true"),
+                None
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let mut invalid = classified_entry_input(&label);
+    invalid["category_id"] = json!(label);
+    assert_eq!(
+        alice
+            .call("POST", "/api/transactions", Some(invalid))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        2
+    );
+}
+fn classified_entry_input(label: &str) -> Value {
+    json!({"description":"Synthetic classified entry","date":"2026-11-01","amount":"9","kind":"expense","label_ids":[label]})
+}
+
+#[tokio::test]
+async fn classification_setup_and_import_edits_preserve_history_and_matching() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    assert_eq!(
+        alice.call("GET", "/api/classification", None).await.1["setup_complete"],
+        false
+    );
+    let defaults = json!({"categories":["Food"],"labels":["Holiday"]});
+    for _ in 0..2 {
+        assert_eq!(
+            alice
+                .call("POST", "/api/classification/setup", Some(defaults.clone()))
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    let catalog = alice.call("GET", "/api/classification", None).await.1;
+    assert_eq!(catalog["categories"].as_array().unwrap().len(), 1);
+    let category = catalog["categories"][0]["id"].as_str().unwrap();
+    let label = catalog["labels"][0]["id"].as_str().unwrap();
+    let source = alice.source("Synthetic classified import").await;
+    let csv =
+        "date,description,amount,external_id\n2026-11-01,Imported synthetic dinner,-40,dinner\n";
+    let input = json!({"source_id":source,"csv":csv});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input.clone()))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let batch = alice.call("GET", "/api/imports/history", None).await.1["batches"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let path = format!("/api/imports/history/{batch}");
+    let initial = alice.call("GET", &path, None).await.1;
+    let entry = initial["removable_entries"][0]["id"].as_str().unwrap();
+    classify(
+        &mut alice,
+        json!({"ids":[entry],"action":"set_category","category_id":category}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[entry],"action":"add_labels","label_ids":[label]}),
+    )
+    .await;
+    let current = alice.call("GET", &path, None).await.1;
+    assert_eq!(current["edited"], 1);
+    assert_eq!(current["removable"], 0);
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("{path}/remove"),
+                Some(json!({"token":initial["token"],"selected_edited_ids":[]}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let entries = alice.call("GET", "/api/entries", None).await.1;
+    assert_eq!(entries["totals"]["transaction_count"], 1);
+    assert_eq!(entries["entries"][0]["category"]["id"], category);
+    assert_eq!(entries["entries"][0]["labels"][0]["id"], label);
+    let mut manual = classified_entry_input(label);
+    manual["category_id"] = json!(category);
+    let (status, added) = alice.call("POST", "/api/transactions", Some(manual)).await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    let manual_id = added["id"].as_str().unwrap();
+    assert_eq!(
+        alice
+            .call(
+                "PATCH",
+                &format!("/api/transactions/{manual_id}"),
+                Some(json!({"field":"description","value":"Updated synthetic entry"}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let current = alice.call("GET", "/api/entries", None).await.1;
+    let manual = current["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == manual_id)
+        .unwrap();
+    assert_eq!(manual["category"]["id"], category);
+    assert_eq!(manual["labels"][0]["id"], label);
+    assert!(manual["source_id"].is_null());
+    assert_eq!(
+        alice
+            .call("GET", "/api/transactions?month=2026-11", None)
+            .await
+            .1[0]["category"]["id"],
+        category
+    );
+}
+
+#[tokio::test]
+async fn import_classification_drafts_commit_atomically_and_preserve_repeat_edits() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let category = classification_item(&mut alice, "category", "Dinner").await;
+    let label = classification_item(&mut alice, "label", "Italy").await;
+    let source = alice.source("Synthetic labeled import").await;
+    let csv = "date,description,amount,external_id\n2026-11-01,Dinner,-40,dinner\n2026-11-02,Hotel,-120,hotel\n2026-11-03,Later,-25,later\n";
+    let input = json!({"source_id":source,"csv":csv,"selected_records":[2,3],"classifications":{"2":{"category_id":category,"label_ids":[label]},"3":{"label_ids":[label]}}});
+    let preview = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await;
+    assert_eq!(preview.0, StatusCode::OK);
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        0,
+        "preview/cancel creates no ledger entries"
+    );
+    let (status, outcome) = alice
+        .call("POST", "/api/imports/commit", Some(input.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{outcome}");
+    assert_eq!(outcome["added"], 2);
+    assert_eq!(outcome["excluded"], 1);
+    let entries = alice
+        .call("GET", &format!("/api/entries?label_ids={label}"), None)
+        .await
+        .1;
+    assert_eq!(entries["totals"]["spending_cents"], "16000");
+    let dinner = entries["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["description"] == "Dinner")
+        .unwrap();
+    assert_eq!(dinner["category"]["id"], category);
+    let id = dinner["id"].as_str().unwrap();
+    let batch = alice.call("GET", "/api/imports/history", None).await.1["batches"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let detail = format!("/api/imports/history/{batch}");
+    let original = alice.call("GET", &detail, None).await.1;
+    assert_eq!(
+        original["removable"], 2,
+        "initial classification is part of the import baseline"
+    );
+    assert_eq!(original["edited"], 0);
+    classify(
+        &mut alice,
+        json!({"ids":[id],"action":"remove_labels","label_ids":[label]}),
+    )
+    .await;
+    assert_eq!(alice.call("GET", &detail, None).await.1["edited"], 1);
+    let repeated = alice.call("POST", "/api/imports/commit", Some(input)).await;
+    assert_eq!(repeated.0, StatusCode::OK);
+    assert_eq!(repeated.1["known"], 2);
+    assert_eq!(repeated.1["added"], 0);
+    let current = alice.call("GET", "/api/entries", None).await.1;
+    let dinner = current["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == id)
+        .unwrap();
+    assert_eq!(dinner["category"]["id"], category);
+    assert_eq!(
+        dinner["labels"],
+        json!([]),
+        "a retry must not restore a manually removed label"
+    );
+}
+
+#[tokio::test]
+async fn import_classification_rejects_foreign_archived_wrong_kind_and_non_additions() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let own_label = classification_item(&mut alice, "label", "Own").await;
+    let category = classification_item(&mut alice, "category", "Food").await;
+    let foreign_label = classification_item(&mut bob, "label", "Private").await;
+    let source = alice.source("Draft ownership fixture").await;
+    let csv =
+        "date,description,amount,external_id\n2026-11-01,First,-1,one\n2026-11-02,Second,-2,two\n";
+    for (drafts, status) in [
+        (
+            json!({"2":{"label_ids":[own_label]},"3":{"label_ids":[foreign_label]}}),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            json!({"2":{"category_id":own_label}}),
+            StatusCode::NOT_FOUND,
+        ),
+        (json!({"2":{"label_ids":[category]}}), StatusCode::NOT_FOUND),
+        (
+            json!({"2":{"label_ids":[own_label,own_label]}}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"99":{"label_ids":[own_label]}}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        assert_eq!(
+            alice
+                .call(
+                    "POST",
+                    "/api/imports/commit",
+                    Some(json!({"source_id":source,"csv":csv,"classifications":drafts}))
+                )
+                .await
+                .0,
+            status
+        );
+        assert_eq!(
+            alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+            0
+        );
+        assert_eq!(
+            alice.call("GET", "/api/imports/history", None).await.1["batches"],
+            json!([])
+        );
+    }
+    assert_eq!(alice.call("POST","/api/imports/commit",Some(json!({"source_id":source,"csv":csv,"selected_records":[2],"classifications":{"3":{"label_ids":[own_label]}}}))).await.0,StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        alice
+            .call(
+                "PUT",
+                &format!("/api/classification/{own_label}"),
+                Some(json!({"name":"Own","color":"blue","archived":true}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(alice.call("POST","/api/imports/commit",Some(json!({"source_id":source,"csv":csv,"classifications":{"3":{"label_ids":[own_label]}}}))).await.0,StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        0,
+        "failure after the first insertion rolls back every entry"
+    );
+    let manual = alice.entry(None, "2026-11-01", "1", "expense").await;
+    classify(
+        &mut alice,
+        json!({"ids":[manual],"action":"set_category","category_id":category}),
+    )
+    .await;
+    let matched_csv = "date,description,amount,external_id\n2026-11-01,Synthetic entry,-1,match\n";
+    let mut input = json!({"source_id":source,"csv":matched_csv,"selected_records":[2],"decisions":[{"record":2,"action":"match","transaction_id":manual}],"classifications":{"2":{"category_id":null}}});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input.clone()))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    input.as_object_mut().unwrap().remove("classifications");
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["entries"][0]["category"]["id"],
+        category
+    );
+}
+
+async fn label_rule(
+    client: &mut Client,
+    name: &str,
+    category: &str,
+    labels: &[&str],
+    source: Option<&str>,
+) -> String {
+    let (status,value)=client.call("POST","/api/rules",Some(json!({"name":name,"operator":"contains_word","pattern":"coffee","category_id":category,"label_ids":labels,"source_id":source,"enabled":true}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{value}");
+    value["id"].as_str().unwrap().into()
+}
+
+#[tokio::test]
+async fn rules_merge_labels_detect_conflicts_and_enforce_source_and_user_ownership() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let food = classification_item(&mut alice, "category", "Food").await;
+    let shopping = classification_item(&mut alice, "category", "Shopping").await;
+    let essential = classification_item(&mut alice, "label", "Essential").await;
+    let trip = classification_item(&mut alice, "label", "Trip").await;
+    let source = alice.source("Synthetic scoped source").await;
+    let foreign = bob.source("Private other source").await;
+    label_rule(&mut alice, "Coffee", &food, &[&essential], None).await;
+    label_rule(
+        &mut alice,
+        "Coffee overlap",
+        &food,
+        &[&trip, &essential],
+        None,
+    )
+    .await;
+    label_rule(&mut alice, "Scoped coffee", &shopping, &[], Some(&source)).await;
+    let suggest = |source: Option<&str>| json!({"description":"COFFEE-shop","source_id":source});
+    let plan = alice
+        .call("POST", "/api/rules/suggest", Some(suggest(None)))
+        .await
+        .1;
+    assert_eq!(plan["category_id"], food);
+    assert_eq!(plan["conflict"], false);
+    assert_eq!(plan["label_ids"].as_array().unwrap().len(), 2);
+    let conflict = alice
+        .call("POST", "/api/rules/suggest", Some(suggest(Some(&source))))
+        .await
+        .1;
+    assert_eq!(conflict["conflict"], true);
+    assert!(conflict["category_id"].is_null());
+    assert_eq!(
+        alice
+            .call("POST", "/api/rules/suggest", Some(suggest(Some(&foreign))))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        bob.call("GET", "/api/rules", None).await.1["rules"],
+        json!([])
+    );
+    assert_eq!(
+        bob.call("POST", "/api/rules/suggest", Some(suggest(None)))
+            .await
+            .1["matched_rules"],
+        json!([])
+    );
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/rules/suggest",
+                Some(json!({"description":"coffeeshop"}))
+            )
+            .await
+            .1["matched_rules"],
+        json!([])
+    );
+    let input = json!({"name":"Invalid foreign target","operator":"equals","pattern":"coffee","category_id":classification_item(&mut bob,"category","Private").await,"label_ids":[],"enabled":true});
+    assert_eq!(
+        alice.call("POST", "/api/rules", Some(input)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let input = json!({"name":"Literal rule","operator":"contains","pattern":"coffee","category_id":food,"label_ids":[],"enabled":true});
+    assert_eq!(
+        alice
+            .send("POST", "/api/rules", Some(input), false, ORIGIN)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn import_rules_pin_previews_resolve_conflicts_and_preserve_manual_overrides() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let food = classification_item(&mut alice, "category", "Food").await;
+    let shopping = classification_item(&mut alice, "category", "Shopping").await;
+    let label = classification_item(&mut alice, "label", "Coffee").await;
+    let rule = label_rule(&mut alice, "Coffee", &food, &[&label], None).await;
+    let source = alice.source("Synthetic rules import").await;
+    let mut input = json!({"source_id":source,"csv":"date,description,amount,external_id\n2026-11-01,Corner coffee,-8.40,coffee-one\n","selected_records":[2]});
+    let preview = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await
+        .1;
+    assert_eq!(preview["rows"][0]["rule_suggestions"]["category_id"], food);
+    input["rules_revision"] = preview["rules_revision"].clone();
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let entries = alice.call("GET", "/api/entries", None).await.1;
+    assert_eq!(entries["entries"][0]["category"]["id"], food);
+    assert_eq!(entries["entries"][0]["labels"][0]["id"], label);
+    let batch = alice.call("GET", "/api/imports/history", None).await.1["batches"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        alice
+            .call("GET", &format!("/api/imports/history/{batch}"), None)
+            .await
+            .1["edited"],
+        0
+    );
+    label_rule(&mut alice, "Other coffee category", &shopping, &[], None).await;
+    let mut input = json!({"source_id":source,"csv":"date,description,amount,external_id\n2026-11-02,Corner coffee,-8.40,coffee-two\n","selected_records":[2]});
+    let preview = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await
+        .1;
+    assert_eq!(preview["rows"][0]["rule_suggestions"]["conflict"], true);
+    input["rules_revision"] = preview["rules_revision"].clone();
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input.clone()))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    input["classifications"] = json!({"2":{"category_id":null,"label_ids":[],"category_confirmed":true,"labels_confirmed":true}});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let entries = alice.call("GET", "/api/entries", None).await.1;
+    assert!(entries["entries"][0]["category"].is_null());
+    assert_eq!(entries["entries"][0]["labels"], json!([]));
+    let mut input = json!({"source_id":source,"csv":"date,description,amount,external_id\n2026-11-03,Corner coffee,-8.40,coffee-three\n"});
+    input["rules_revision"] = alice
+        .call("POST", "/api/imports/preview", Some(input.clone()))
+        .await
+        .1["rules_revision"]
+        .clone();
+    let stored = alice.call("GET", "/api/rules", None).await.1;
+    let old = stored["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == rule)
+        .unwrap();
+    let edit = json!({"name":"Coffee paused","operator":"contains_word","pattern":"coffee","category_id":food,"label_ids":[label],"enabled":false,"revision":old["revision"]});
+    assert_eq!(
+        alice
+            .call("PUT", &format!("/api/rules/{rule}"), Some(edit.clone()))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        alice
+            .call("PUT", &format!("/api/rules/{rule}"), Some(edit))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/commit", Some(input))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["transaction_count"],
+        2
+    );
+}
+
+#[tokio::test]
+async fn rules_history_requires_fresh_review_and_preserves_existing_categories_and_labels() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let food = classification_item(&mut alice, "category", "Food").await;
+    let shopping = classification_item(&mut alice, "category", "Shopping").await;
+    let label = classification_item(&mut alice, "label", "Coffee").await;
+    let manual_label = classification_item(&mut alice, "label", "Manual").await;
+    let first = alice.entry(None, "2026-11-01", "10", "expense").await;
+    let second = alice.entry(None, "2026-11-02", "20", "expense").await;
+    for id in [&first, &second] {
+        assert_eq!(
+            alice
+                .call(
+                    "PATCH",
+                    &format!("/api/transactions/{id}"),
+                    Some(json!({"field":"description","value":"Coffee purchase"}))
+                )
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    classify(
+        &mut alice,
+        json!({"ids":[second],"action":"set_category","category_id":shopping}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[second],"action":"add_labels","label_ids":[manual_label]}),
+    )
+    .await;
+    let rule = label_rule(&mut alice, "Coffee history", &food, &[&label], None).await;
+    assert_eq!(
+        bob.call("GET", &format!("/api/rules/{rule}/apply-preview"), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let bob_entry = bob.entry(None, "2026-11-01", "999", "expense").await;
+    bob.call(
+        "PATCH",
+        &format!("/api/transactions/{bob_entry}"),
+        Some(json!({"field":"description","value":"Coffee purchase"})),
+    )
+    .await;
+    let preview=alice.call("POST","/api/rules/preview",Some(json!({"name":"Preview coffee","operator":"contains_word","pattern":"coffee","category_id":food,"label_ids":[label],"enabled":true}))).await;
+    assert_eq!(preview.0, StatusCode::OK);
+    assert_eq!(preview.1["match_count"], 2);
+    let path = format!("/api/rules/{rule}/apply-preview");
+    let preview = alice.call("GET", &path, None).await.1;
+    assert_eq!(preview["affected_entries"], 2);
+    alice
+        .call(
+            "PATCH",
+            &format!("/api/transactions/{first}"),
+            Some(json!({"field":"date","value":"2026-11-03"})),
+        )
+        .await;
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("/api/rules/{rule}/apply"),
+                Some(json!({"token":preview["token"]}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let fresh = alice.call("GET", &path, None).await.1;
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                &format!("/api/rules/{rule}/apply"),
+                Some(json!({"token":fresh["token"]}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let entries = alice.call("GET", "/api/entries", None).await.1;
+    let rows = entries["entries"].as_array().unwrap();
+    assert_eq!(
+        rows.iter().find(|e| e["id"] == first).unwrap()["category"]["id"],
+        food
+    );
+    let retained = rows.iter().find(|e| e["id"] == second).unwrap();
+    assert_eq!(retained["category"]["id"], shopping);
+    assert_eq!(retained["labels"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        alice.call("GET", &path, None).await.1["affected_entries"],
+        0
+    );
+    let current = alice.call("GET", "/api/rules", None).await.1["rules"][0].clone();
+    assert_eq!(
+        alice
+            .call(
+                "DELETE",
+                &format!("/api/rules/{rule}"),
+                Some(json!({"revision":current["revision"]}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        alice.call("GET", "/api/rules", None).await.1["rules"],
+        json!([])
+    );
+    assert_eq!(
+        alice.call("GET", "/api/entries", None).await.1["totals"]["spending_cents"],
+        "3000"
+    );
+}
+
+#[tokio::test]
+async fn classification_deletion_previews_counts_pauses_rules_and_rechecks_changes() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let mut bob = h.client("bob").await;
+    let food = classification_item(&mut alice, "category", "Food").await;
+    let label = classification_item(&mut alice, "label", "Trip").await;
+    let one = alice.entry(None, "2026-11-01", "10", "expense").await;
+    let two = alice.entry(None, "2026-11-02", "20", "expense").await;
+    classify(
+        &mut alice,
+        json!({"ids":[one,two],"action":"set_category","category_id":food}),
+    )
+    .await;
+    classify(
+        &mut alice,
+        json!({"ids":[one,two],"action":"add_labels","label_ids":[label]}),
+    )
+    .await;
+    let rule = label_rule(&mut alice, "Food rule", &food, &[&label], None).await;
+    let path = format!("/api/classification/{food}/deletion-preview");
+    let preview = alice.call("GET", &path, None).await.1;
+    assert_eq!(preview["entry_count"], 2);
+    assert_eq!(preview["rule_count"], 1);
+    assert_eq!(bob.call("GET", &path, None).await.0, StatusCode::NOT_FOUND);
+    classify(
+        &mut alice,
+        json!({"ids":[one],"action":"set_category","category_id":null}),
+    )
+    .await;
+    assert_eq!(
+        alice
+            .call(
+                "DELETE",
+                &format!("/api/classification/{food}"),
+                Some(json!({"token":preview["token"]}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let fresh = alice.call("GET", &path, None).await.1;
+    assert_eq!(
+        alice
+            .call(
+                "DELETE",
+                &format!("/api/classification/{food}"),
+                Some(json!({"token":fresh["token"]}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let rows = alice.call("GET", "/api/entries", None).await.1;
+    assert_eq!(rows["totals"]["spending_cents"], "3000");
+    assert!(
+        rows["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["category"].is_null() && e["labels"].as_array().unwrap().len() == 1)
+    );
+    let rules = alice.call("GET", "/api/rules", None).await.1;
+    let paused = rules["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == rule)
+        .unwrap();
+    assert_eq!(paused["enabled"], false);
+    assert!(paused["category_id"].is_null());
+    let fresh = alice
+        .call(
+            "GET",
+            &format!("/api/classification/{label}/deletion-preview"),
+            None,
+        )
+        .await
+        .1;
+    assert_eq!(fresh["entry_count"], 2);
+    assert_eq!(
+        alice
+            .call(
+                "DELETE",
+                &format!("/api/classification/{label}"),
+                Some(json!({"token":fresh["token"]}))
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert!(
+        alice.call("GET", "/api/entries", None).await.1["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["labels"] == json!([]))
+    );
+    assert_eq!(
+        alice.call("GET", "/api/rules", None).await.1["rules"][0]["label_ids"],
+        json!([])
+    );
+}
+
+#[tokio::test]
+async fn archiving_rule_targets_pauses_without_resuming_on_restore() {
+    let h = Harness::new().await;
+    let mut alice = h.client("alice").await;
+    let food = classification_item(&mut alice, "category", "Food").await;
+    label_rule(&mut alice, "Coffee", &food, &[], None).await;
+    for archived in [true, false] {
+        assert_eq!(
+            alice
+                .call(
+                    "PUT",
+                    &format!("/api/classification/{food}"),
+                    Some(json!({"name":"Food","color":"sage","archived":archived}))
+                )
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    assert_eq!(
+        alice.call("GET", "/api/rules", None).await.1["rules"][0]["enabled"],
+        false
+    );
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/rules/suggest",
+                Some(json!({"description":"coffee"}))
+            )
+            .await
+            .1["matched_rules"],
+        json!([])
     );
 }
