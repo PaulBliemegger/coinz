@@ -85,8 +85,10 @@ Uncategorized clears the assignment. Creation is available in search.
 Optional labels appear as muted chips, without a “Labels” caption. The plus opens
 up to four recently assigned active labels, with alphabetical fallback for unused
 labels. Quick choices remain stable while the picker is open. All labels expands
-search and creation in the same inline area. A chip reveals its remove button on
-hover/focus; touch keeps removal available. Add/remove requests save immediately
+search and creation in the same inline area. On hover/focus, a chip reveals a minus
+at its right edge in a small contrasting circle, overlapping the end of the text
+without reserving extra width. The whole editable chip is the remove button,
+including on touch, where it has a larger hit target. Add/remove requests save immediately
 after server confirmation. Failed requests retain assignments and show an error.
 Done/Escape closes the picker without undoing saved edits. Creating vocabulary
 items is immediate even if the surrounding new-entry draft is later cancelled.
