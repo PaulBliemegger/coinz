@@ -99,7 +99,7 @@ The current importer supports the [example CSV format](specs/csv-import.md) and
 explicit layouts through reusable profiles.
 [Reusable import profiles](specs/import-profiles.md) have an approved Guided
 selection design for supporting different CSV layouts without a programmed
-adapter for each one. The flow is implemented; browser verification remains blocked.
+adapter for each one. The flow is implemented.
 They map columns and parsing settings before the existing import overview; YAML
 sharing and file-managed declarative setup are desired later work. N26 and Erste
 remain initial target export streams,
@@ -123,21 +123,23 @@ Per-user entry CSV export and restoration through import review are implemented.
 Versioned per-user settings JSON supports empty-account restoration before CSV; full database recovery
 remains a separate operational backup concern. See [entry export and reimport](specs/data-portability.md).
 
-## Next slices
+## Next steps and deferred work
 
-Current implemented behavior is summarized above and detailed in the
-[specification index](specs/README.md). Work on one coherent slice at a time:
+The immediate next slice is the first private Pi deployment: select the tested
+image, prepare the private runtime configuration, check synthetic workflows and
+persistence, then collect manual performance/usability feedback. See the
+[deployment guide](deployment.md#first-pi-trial). The initial portability and clean
+schema baseline work is complete.
 
-1. Extend [categories and labels](specs/classification.md) with useful insight
-   reports in separate slices; local rules are implemented.
-   [CSV import profiles](specs/import-profiles.md) now provide reusable layouts.
-   N26/Erste remain target export streams; define transfer/refund treatment before
-   supporting real bank formats.
-2. Migrate useful historical Excel material without overlapping totals, when needed.
-3. Implement monthly budgets/planning, commitments, and one-off scenarios. Consider
-   a balance-based calculator only when it answers a concrete decision.
-4. Iterate using feedback. Optional humor/rewards must not become finance-core data
-   dependencies; reward reviewing/organizing, never income/spending amounts.
+Use trial feedback to choose subsequent feature slices. Transfer/refund treatment
+must be defined before relying on imports that would otherwise misstate reports.
+Bank-specific adapters are needed only when profiles cannot cover a demonstrated
+format. Richer comparisons, recurring commitments, scenarios, file-managed YAML
+profiles and one-off historical Excel migration remain deferred. Monthly budgets,
+savings reservations and expected-income matching are already implemented.
+
+The [specification index](specs/README.md) owns detailed feature status; keep one
+active implementation slice rather than maintaining a second feature backlog here.
 
 ## Boundaries and maintenance
 
@@ -145,8 +147,8 @@ Initially one person, EUR, laptop/phone browser access, Docker Compose, later NA
 Logins and user ownership remain required. Bank API sync, multi-currency, investments,
 net worth, native apps, offline sync, household sharing, and public signup are
 deferred. GitHub checks and multi-platform dev image delivery are defined; private
-deployment remains an explicit owner action. See the README for workflow setup
-and verification status. Pre-v1.0 compatibility is not required, but data must never
+deployment remains an explicit owner action. See [deployment](deployment.md) for image delivery/runtime operations and
+[development](development.md#verification-status) for verification status. Pre-v1.0 compatibility is not required, but data must never
 be reset implicitly. Keep private runtime data inaccessible to the development
 agent; [privacy requirements](privacy.md) take precedence over convenient debugging.
 

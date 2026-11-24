@@ -2,7 +2,7 @@
 
 This document owns runtime structure and technical decisions. See the
 [specification index](specs/README.md) for feature status and behavior, and the
-[README](../README.md#verification-status) for current verification limits.
+[development guide](development.md#verification-status) for current verification limits.
 
 ## Runtime
 
@@ -62,6 +62,8 @@ frontend/
 scripts/                  Small development helpers
 .githooks/                Explicitly installed Git hooks
 docs/
+  development.md          Local setup, checks, resets and verification evidence
+  deployment.md           Container images and private runtime operations
   product.md              Goals, scope, sequencing, open product choices
   architecture.md         Runtime, boundaries, structure and major tradeoffs
   specs/                  Detailed behavior and acceptance examples by feature
@@ -170,9 +172,9 @@ scaffolding directories, generic utility collections, and required layers.
   `make check`, including in GitHub Actions for pull requests to `dev`/`main` and
   pushes to either branch. Only successful `dev` pushes build and smoke-test
   native amd64/arm64 container images before publishing their combined manifest
-  to GHCR. CI delivers images;
-  the owner explicitly deploys a selected digest to the isolated private runtime.
-  Setup and workflow verification limits live in the README.
+  to GHCR. CI delivers images; the owner explicitly deploys a selected digest to
+  the isolated private runtime. [Development](development.md) owns setup/checks;
+  [deployment](deployment.md) owns image delivery and runtime operations.
 
 ## Decision records
 

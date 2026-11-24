@@ -1,7 +1,7 @@
 # Manual ledger
 
 Status: implemented; current verification limits are in the
-[README](../../README.md#verification-status).
+[development guide](../development.md#verification-status).
 Manual tracking is independent of accounts and balances. Sources are optional metadata.
 Purpose: record personal EUR finances accurately while making incomplete history
 visible. [Product scope](../product.md) owns the general recorded-figure semantics.
@@ -172,7 +172,7 @@ shape, which the UI handles generically.
 `0001_initial.sql` creates the current ledger directly, with nullable transaction
 sources and no account, opening-balance or snapshot tables. The pre-v0.1 migration
 history has been replaced; databases from that history require an explicit reset.
-The [README reset procedure](../../README.md#development-schema-baseline-and-reset)
+The [development reset procedure](../development.md#development-schema-baseline-and-reset)
 owns the commands. Startup must reject incompatible histories rather than reset
 or rewrite existing data. All agent verification uses temporary synthetic databases.
 
@@ -204,14 +204,13 @@ journeys in `frontend/e2e/ledger.spec.ts` cover inline editing, selection prefer
 deletion confirmation, round row selection, edit/selection independence, keyboard
 selection, reduced motion, appearance, dashboard navigation, and period filters
 alongside manual entry.
-These browser journeys define coverage, not a claim that their assertions or
-screenshots have been verified; see the README verification status.
 
 ## Appearance and user menu
 
 Clicking the username opens a native disclosure containing Appearance, Settings,
-and Log out. Escape and outside pointer interaction close it. Settings still opens
-the separate sidebar for selection visibility; no export placeholder is added.
+and Log out. Escape and outside pointer interaction close it. Settings opens the
+sidebar with selection visibility and the implemented
+[data portability controls](data-portability.md).
 
 Appearance offers System (default), Light, and Dark. A validated localStorage
 preference (`coinz.appearance`) contains only that enum; missing/invalid/unavailable

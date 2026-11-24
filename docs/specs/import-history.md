@@ -1,7 +1,7 @@
 # Import history and removal
 
-Status: implemented for committed imports. Browser verification
-status is recorded in the README. [CSV import](csv-import.md) owns parsing,
+Status: implemented for committed imports. Executed checks are recorded in
+[verification status](../development.md#verification-status). [CSV import](csv-import.md) owns parsing,
 matching, and duplicate semantics.
 
 ## History

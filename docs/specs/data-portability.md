@@ -1,6 +1,6 @@
-# Entry export and reimport
+# Data portability
 
-Status: CSV and versioned settings JSON export/restoration implemented in source. See the [README](../../README.md#verification-status) for current checks.
+Status: CSV and versioned settings JSON export/restoration implemented in source. See the [development guide](../development.md#verification-status) for current checks.
 
 ## Workflow and scope
 
@@ -100,7 +100,7 @@ bank descriptions. Credentials must be created independently on a fresh install.
 
 Settings JSON preserves setup separately; restore it before entries, as described
 below. CLI portability and full database backup tooling remain deferred. The existing private SQLite
-recovery procedure is in the [README](../../README.md#later-homelab-deployment).
+recovery procedure is in the [deployment guide](../deployment.md#updates-and-recovery).
 
 After a verified round trip, deliberate development schema resets are acceptable:
 export, explicitly create an empty database, restore settings/entries, then check
@@ -118,8 +118,7 @@ assignments, repeat and overlapping restores, local-edit conflicts, authenticati
 CSRF, two-user isolation, explicit matching and atomic failure. Parser tests in
 `backend/src/imports/portable.rs` validate money, names, references and JSON labels.
 `frontend/e2e/portability.spec.ts` defines desktop/phone download, preview, restore
-and repeat-preview journeys. The README distinguishes executed checks from pending
-browser verification.
+and repeat-preview journeys.
 
 ## Settings JSON
 
@@ -182,4 +181,4 @@ rules, exact large amounts, explicit zero targets, deferred receipt reconnection
 preview cancellation, stale destination checks, invalid versions/references and
 atomic rejection. `frontend/e2e/settings-portability.spec.ts` defines desktop/phone
 export, unsupported-version rejection, preview/cancel, restore and populated-account
-rejection. Browser execution status is recorded in the README.
+rejection.

@@ -1,7 +1,7 @@
 # CSV import and duplicate review
 
 Status: implemented; current verification limits are in the
-[README](../../README.md#verification-status). The checked-in examples are wholly synthetic,
+[development guide](../development.md#verification-status). The checked-in examples are wholly synthetic,
 not N26 or Erste format samples. This extends the [manual ledger](manual-ledger.md)
 with preview, duplicate protection and atomic import.
 [Import profiles](import-profiles.md) define the implemented reusable mapping flow.
@@ -207,8 +207,7 @@ submissions. `frontend/tests/import-selection.test.ts` covers exact selected tot
 explicit match decisions, and leaving rows for later without permanent skips.
 `frontend/e2e/ledger.spec.ts` defines desktop/phone preview, selected-subset,
 repeat-preview and reimport journeys with batch removal, plus synthetic screenshots.
-The README records whether those browser assertions/screenshots have been
-verified. No private exports or running private app are needed.
+No private exports or running private app are needed.
 
 ## Deferred
 
@@ -236,4 +235,4 @@ makes source-less file/row uniqueness explicit in SQLite. Integration cases cove
 first import, exact repeat, cross-file ID reuse/review, manual matching, history,
 two-user isolation and deletion/reimport triggers. The
 source-less desktop/phone journey verifies profile/file review and commit with
-Optional source left closed. Browser execution status is recorded in the README.
+Optional source left closed.

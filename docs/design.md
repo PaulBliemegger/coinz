@@ -2,7 +2,7 @@
 
 Status: established direction. [Feature specs](specs/README.md) own detailed
 interaction rules and implementation status; the
-[README](../README.md#verification-status) records current verification limits.
+[development guide](development.md#verification-status) records current verification limits.
 
 ## Warm, quiet, useful
 
@@ -49,8 +49,8 @@ picker, filters, and pagination.
 
 The approved [Guided selection design](specs/import-profiles.md#approved-interaction-design)
 extends import setup with table-header mapping and description editing in review.
-It is implemented; browser/visual verification remains blocked. The spec records the interaction so future work
-does not depend on a chat-only prototype.
+The spec records the implemented interaction so future work does not depend on a
+chat-only prototype.
 
 ## Small view preferences
 

@@ -1,6 +1,6 @@
 # Monthly budgets
 
-Status: implemented. Browser/visual verification status is recorded in the README.
+Status: implemented. See [verification status](../development.md#verification-status) for executed checks.
 
 ## Plan and recorded figures
 
@@ -101,7 +101,7 @@ and completed receipts, unbudgeted spending, cutoff dates, year comparisons,
 foreign targets/receipts, duplicate matching, rollback, stale saves and deletion
 reviews, archive behavior and edited receipt lifecycle. The desktop/phone journey
 in `frontend/e2e/budgets.spec.ts` defines editing, matching, savings, copy/reset and
-screenshots. The README records which checks could actually run.
+screenshots.
 
 Settings restoration can temporarily leave receipt links waiting for their CSV
 entries. The [portability contract](data-portability.md#settings-json) defines the
