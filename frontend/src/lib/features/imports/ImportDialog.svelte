@@ -39,6 +39,7 @@
     onclose: () => void;
     onimported: (result: ImportOutcome, source: string) => Promise<void>;
   } = $props();
+  const formId = $props.id();
   let dialog: HTMLDialogElement;
   let previewHeading = $state<HTMLHeadingElement>();
   let choices = $state<Source[]>([]);
@@ -476,7 +477,11 @@
         <details>
           <summary>Optional source</summary>
           <label>
-            Import source<select bind:value={sourceId} disabled={working}>
+            <span id={`${formId}-source`}>Import source</span><select
+              aria-labelledby={`${formId}-source`}
+              bind:value={sourceId}
+              disabled={working}
+            >
               <option value="">No source</option>{#each choices as source (source.id)}<option
                   value={source.id}
                 >
@@ -512,7 +517,11 @@
           Sources are optional metadata and hold no bank balance.
         </p>
         <label>
-          Import profile<select bind:value={profileId} disabled={working || loadingProfiles}>
+          <span id={`${formId}-profile`}>Import profile</span><select
+            aria-labelledby={`${formId}-profile`}
+            bind:value={profileId}
+            disabled={working || loadingProfiles}
+          >
             <option value="">Create a new profile</option>
             {#each profiles as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
           </select>
@@ -644,7 +653,8 @@
             <form class="classification-picker" onsubmit={bulkClassify}>
               {#if bulkAction === 'set_category'}
                 <label>
-                  Category for selected additions<select
+                  <span id={`${formId}-bulk-category`}>Category for selected additions</span><select
+                    aria-labelledby={`${formId}-bulk-category`}
                     bind:value={bulkCategory}
                     disabled={working}
                   >

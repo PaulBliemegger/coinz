@@ -58,10 +58,11 @@ the selected month.
 
 Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 54
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
-startup because the agent sandbox denies local sockets; browser assertions and
-visual review remain unverified. An offline Chromium launch was also unavailable.
-The category/label, compact-filter, import-review, optional-source, budget, rule, and Insights navigation/report desktop/phone journeys
-are defined but could not run.
+startup because the agent sandbox denies local sockets. An initial GitHub run
+executed all 42 desktop/phone browser journeys: 20 passed and 22 failed. Fixes
+address dropdown label lookup, inline-edit selector ambiguity and an Insights
+fixture assigning an archived category; a successful GitHub rerun and visual
+review are still required. An offline Chromium launch was also unavailable.
 See [agent test permissions](docs/agent-testing.md).
 The frontend checks ran with Node 26.13.1 and reported an engine warning;
 the supported project version remains Node 24.22.3.
@@ -142,13 +143,21 @@ To update after source changes, run `docker compose up -d --build`. Migrations r
 on startup. Before v1.0, schema compatibility across development changes is not
 guaranteed; take a backup before updating data you want to keep.
 
-## GitHub dev checks and images
+## GitHub checks and dev images
 
-[The dev workflow](.github/workflows/dev.yml) runs `make check` for pull requests
-targeting `dev` and pushes to `dev`, using the pinned Rust/Node/pnpm versions and
-Chromium with its system dependencies. Failed browser journeys retain synthetic
+[The workflow](.github/workflows/dev.yml) runs `make check` for pull requests
+targeting `dev` or `main` and pushes to either branch, using the pinned
+Rust/Node/pnpm versions and Chromium with its system dependencies. Failed browser journeys retain synthetic
 traces/screenshots as GitHub artifacts for seven days. Other branches and release
-tags do not publish images.
+tags do not publish images. Browser failures remain blocking on both branches.
+
+`main` runs the same full checks without publishing images or deploying. To block
+untested changes before they reach `main`, configure a GitHub branch protection
+rule requiring pull requests and the **Full checks** status, and disallow bypass
+if the restriction should also apply to administrators. A workflow by itself
+reports failures after a direct push; it does not prevent that push. These
+repository settings are separate from this workflow and have not been configured
+by this change. See [GitHub's protected branch documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
 
 After successful checks on a `dev` push, native GitHub-hosted x86 and ARM runners
 build `linux/amd64` and `linux/arm64` images. Each image must start against a fresh

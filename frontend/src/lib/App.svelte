@@ -440,7 +440,8 @@
         <summary>{user.username} <span aria-hidden="true">▾</span></summary>
         <div class="user-dropdown">
           <label>
-            Appearance<select
+            <span id="appearance-label">Appearance</span><select
+              aria-labelledby="appearance-label"
               value={appearance}
               onchange={(event) => chooseAppearance(event.currentTarget.value)}
             >

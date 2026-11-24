@@ -113,7 +113,10 @@ test('dashboard, entry workspace, exact totals, editing, filters, theme and logo
   await page
     .getByRole('button', { name: 'Change amount: A very precise lunch', exact: true })
     .click();
-  await page.getByLabel('Amount', { exact: true }).fill('13.34');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Amount', { exact: true })
+    .fill('13.34');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('spending')).toHaveText('€13.34');
   await expect(
@@ -122,7 +125,10 @@ test('dashboard, entry workspace, exact totals, editing, filters, theme and logo
   await page
     .getByRole('button', { name: 'Change date: A very precise lunch', exact: true })
     .click();
-  await page.getByLabel('Date', { exact: true }).fill('2026-11-04');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Date', { exact: true })
+    .fill('2026-11-04');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Change date: A very precise lunch', exact: true }),
@@ -279,12 +285,18 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await page
     .getByRole('button', { name: 'Change description: Demo purchase 31', exact: true })
     .click();
-  await page.getByLabel('Description', { exact: true }).fill('Edited purchase');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Description', { exact: true })
+    .fill('Edited purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page
     .getByRole('button', { name: 'Change description: Demo purchase 29', exact: true })
     .click();
-  await page.getByLabel('Description', { exact: true }).fill('Other edited purchase');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Description', { exact: true })
+    .fill('Other edited purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('link', { name: 'Imports', exact: true }).click();
   await page.getByRole('button', { name: `Review ${filename}`, exact: true }).click();
@@ -562,7 +574,10 @@ test('saving an entry outside its search results focuses the workspace heading',
   await page
     .getByRole('button', { name: 'Change description: Focus fixture', exact: true })
     .click();
-  await page.getByLabel('Description', { exact: true }).fill('Renamed fixture');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Description', { exact: true })
+    .fill('Renamed fixture');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Entries workspace', exact: true })).toBeFocused();
 });

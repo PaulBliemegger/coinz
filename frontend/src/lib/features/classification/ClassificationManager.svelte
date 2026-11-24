@@ -22,6 +22,7 @@
     onchanged: (notice: string) => Promise<void>;
     onunauthorized?: () => void;
   } = $props();
+  const formId = $props.id();
   let kind = $state<ClassificationKind>('category');
   let showDefaults = $state(false);
   let showRules = $state(false);
@@ -279,7 +280,11 @@
         />
       </label>
       {#if kind === 'label'}<label>
-          Colour<select bind:value={color} disabled={busy}>
+          <span id={`${formId}-colour`}>Colour</span><select
+            aria-labelledby={`${formId}-colour`}
+            bind:value={color}
+            disabled={busy}
+          >
             {#each labelColors as c (c)}<option value={c}>{c}</option>{/each}
           </select>
         </label>{/if}

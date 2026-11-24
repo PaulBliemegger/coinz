@@ -28,7 +28,7 @@ test('monthly category spending links to its records, including archived and unc
       headers: { 'X-CSRF-Token': token },
       data,
     });
-    expect(response.ok()).toBeTruthy();
+    expect(response.ok(), `${path}: ${response.status()} ${await response.text()}`).toBeTruthy();
     return response.status() === 204 ? undefined : response.json();
   }
   // The native test server owns only fresh temporary synthetic data.
@@ -59,11 +59,6 @@ test('monthly category spending links to its records, including archived and unc
       category_id: category.id,
     });
   }
-  const archived = await page.request.put(`/api/classification/${ids[0]}`, {
-    headers: { 'X-CSRF-Token': token },
-    data: { name: 'Insights fixture 0', color: 'sage', archived: true },
-  });
-  expect(archived.ok()).toBeTruthy();
   await post('/transactions', {
     date: '2026-11-01',
     description: 'Insights unclassified',
@@ -81,6 +76,11 @@ test('monthly category spending links to its records, including archived and unc
     action: 'set_category',
     category_id: ids[0],
   });
+  const archived = await page.request.put(`/api/classification/${ids[0]}`, {
+    headers: { 'X-CSRF-Token': token },
+    data: { name: 'Insights fixture 0', color: 'sage', archived: true },
+  });
+  expect(archived.ok()).toBeTruthy();
   await post('/transactions', {
     date: '2026-12-01',
     description: 'Insights following month',

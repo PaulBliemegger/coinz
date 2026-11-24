@@ -21,6 +21,7 @@
     onsaved: (profile: ImportProfile) => Promise<void>;
     onback: () => void;
   } = $props();
+  const formId = $props.id();
   const fields = ['date', 'amount', 'description'] as const;
   type Field = (typeof fields)[number];
   const labels = { date: 'Date', amount: 'Amount', description: 'Description' };
@@ -224,8 +225,12 @@
       </table>
     </div>
     <label>
-      External transaction ID (optional)
-      <select disabled={saving} bind:value={layout.external_id}>
+      <span id={`${formId}-external-id`}>External transaction ID (optional)</span>
+      <select
+        aria-labelledby={`${formId}-external-id`}
+        disabled={saving}
+        bind:value={layout.external_id}
+      >
         <option value={null}>No stable ID column</option>
         {#each sample.headers.filter((h) => !fields.some((f) => layout[f] === h) && sample?.headers.filter((v) => v === h).length === 1) as header (header)}<option
             value={header}
@@ -245,22 +250,38 @@
       </p>
       <div class="settings">
         <label>
-          Delimiter<select bind:value={layout.delimiter} disabled={saving}>
+          <span id={`${formId}-delimiter`}>Delimiter</span><select
+            aria-labelledby={`${formId}-delimiter`}
+            bind:value={layout.delimiter}
+            disabled={saving}
+          >
             <option value=",">Comma</option><option value=";">Semicolon</option>
           </select>
         </label>
         <label>
-          Date format<select bind:value={layout.date_format} disabled={saving}>
+          <span id={`${formId}-date-format`}>Date format</span><select
+            aria-labelledby={`${formId}-date-format`}
+            bind:value={layout.date_format}
+            disabled={saving}
+          >
             <option>YYYY-MM-DD</option><option>DD.MM.YYYY</option><option>DD/MM/YYYY</option>
           </select>
         </label>
         <label>
-          Decimal separator<select bind:value={layout.decimal} disabled={saving}>
+          <span id={`${formId}-decimal`}>Decimal separator</span><select
+            aria-labelledby={`${formId}-decimal`}
+            bind:value={layout.decimal}
+            disabled={saving}
+          >
             <option value=".">Dot</option><option value=",">Comma</option>
           </select>
         </label>
         <label>
-          Grouping separator<select bind:value={layout.grouping} disabled={saving}>
+          <span id={`${formId}-grouping`}>Grouping separator</span><select
+            aria-labelledby={`${formId}-grouping`}
+            bind:value={layout.grouping}
+            disabled={saving}
+          >
             <option value="">None</option><option value=".">Dot</option><option value=",">
               Comma
             </option><option value=" ">Space</option>

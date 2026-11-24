@@ -1,10 +1,10 @@
-name: Dev checks and images
+name: Checks and dev images
 
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
   push:
-    branches: [dev]
+    branches: [dev, main]
 
 permissions:
   contents: read

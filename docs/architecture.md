@@ -164,9 +164,10 @@ scaffolding directories, generic utility collections, and required layers.
 - Migrations run on connection/startup. Expired session records are cleaned at app
   assembly; session loading enforces expiry. Additional cleanup can follow usage.
 - Tests use synthetic data and temporary databases. Full checks run through
-  `make check`, including in GitHub Actions for pull requests to `dev` and pushes
-  to `dev`. Successful pushes build and smoke-test native amd64/arm64 container
-  images before publishing their combined manifest to GHCR. CI delivers images;
+  `make check`, including in GitHub Actions for pull requests to `dev`/`main` and
+  pushes to either branch. Only successful `dev` pushes build and smoke-test
+  native amd64/arm64 container images before publishing their combined manifest
+  to GHCR. CI delivers images;
   the owner explicitly deploys a selected digest to the isolated private runtime.
   Setup and workflow verification limits live in the README.
 
