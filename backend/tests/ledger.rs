@@ -4625,3 +4625,254 @@ async fn portable_csv_is_owned_atomic_and_uses_existing_duplicate_review() {
     );
     assert_eq!(alice.export_csv().await.1, csv);
 }
+
+fn settings_fixture() -> Value {
+    json!({
+        "format":"coinz-settings","version":1,"setup_complete":true,
+        "classifications":[
+            {"id":"1d7e0230-fbad-4039-b5e6-183e553b4970","kind":"category","name":"Dining","color":"clay","archived":true},
+            {"id":"2d7e0230-fbad-4039-b5e6-183e553b4970","kind":"label","name":"Trip","color":"blue","archived":false}
+        ],
+        "sources":[
+            {"id":"3d7e0230-fbad-4039-b5e6-183e553b4970","name":"Same source name"},
+            {"id":"4d7e0230-fbad-4039-b5e6-183e553b4970","name":"Same source name"}
+        ],
+        "profiles":[{"name":"Synthetic bank","layout":{"date":"Date","amount":"Amount","description":"Text","external_id":null,"delimiter":";","date_format":"DD.MM.YYYY","decimal":",","grouping":"."}}],
+        "rules":[{"name":"Paused dining","operator":"contains","pattern":"Coffee","source_id":"3d7e0230-fbad-4039-b5e6-183e553b4970","category_id":"1d7e0230-fbad-4039-b5e6-183e553b4970","label_ids":["2d7e0230-fbad-4039-b5e6-183e553b4970"],"enabled":false,"pause_reason":"Target archived."},
+        {"name":"No remaining actions","operator":"equals","pattern":"Old target","source_id":null,"category_id":null,"label_ids":[],"enabled":false,"pause_reason":"Target deleted."}],
+        "budgets":[{"month":"2026-11","savings_cents":"12345","categories":[{"category_id":"1d7e0230-fbad-4039-b5e6-183e553b4970","amount_cents":"0"}],"income":[{"name":"Salary","amount_cents":"9223372036854775807","complete":false,"entry_refs":["5d7e0230-fbad-4039-b5e6-183e553b4970"]}]}]
+    })
+}
+
+#[tokio::test]
+async fn settings_restore_round_trip_relationships_receipts_and_user_isolation() {
+    let original = Harness::new().await;
+    let mut alice = original.client("alice").await;
+    let mut bob = original.client("bob").await;
+    let fixture = settings_fixture();
+    let (status, summary) = alice
+        .call(
+            "POST",
+            "/api/settings/restore/preview",
+            Some(fixture.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        summary,
+        json!({"categories":1,"labels":1,"sources":2,"profiles":1,"rules":2,"budgets":1,"receipt_links":1})
+    );
+    assert_eq!(alice.call("GET", "/api/sources", None).await.1, json!([]));
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/settings/restore/commit",
+                Some(fixture.clone())
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        bob.call("GET", "/api/exports/settings.json", None).await.1["sources"],
+        json!([])
+    );
+    let (status, snapshot) = alice.call("GET", "/api/exports/settings.json", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(snapshot["sources"], fixture["sources"]);
+    assert_eq!(snapshot["profiles"], fixture["profiles"]);
+    assert_ne!(
+        snapshot["classifications"][0]["id"],
+        fixture["classifications"][0]["id"]
+    );
+    assert_eq!(snapshot["classifications"][0]["archived"], true);
+    assert_eq!(snapshot["classifications"][0]["color"], "clay");
+    assert_eq!(
+        snapshot["budgets"][0]["income"][0]["entry_refs"],
+        fixture["budgets"][0]["income"][0]["entry_refs"]
+    );
+    let plan = alice
+        .call("GET", "/api/budgets/2026-11?as_of=2026-11-30", None)
+        .await
+        .1;
+    assert_eq!(plan["income"][0]["unrestored_receipt_count"], 1);
+    assert_eq!(
+        alice
+            .call(
+                "PUT",
+                "/api/budgets/2026-11",
+                Some(json!({"revision":1,"savings":"0","categories":[],"income":[]}))
+            )
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let csv = "date,amount,description,category,labels,source,entry_ref,source_ref,origin\n2026-11-03,42.01,Salary,Dining,\"[\"\"Trip\"\"]\",Same source name,5d7e0230-fbad-4039-b5e6-183e553b4970,3d7e0230-fbad-4039-b5e6-183e553b4970,manual\n";
+    let request = json!({"csv":csv,"filename":"synthetic.csv"});
+    assert_eq!(
+        alice
+            .call("POST", "/api/imports/restore/commit", Some(request))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let plan = alice
+        .call("GET", "/api/budgets/2026-11?as_of=2026-11-30", None)
+        .await
+        .1;
+    assert_eq!(plan["income"][0]["unrestored_receipt_count"], 0);
+    assert_eq!(plan["income"][0]["received_cents"], "4201");
+    assert_eq!(plan["revision"], 2);
+    let after = alice
+        .call("GET", "/api/exports/settings.json", None)
+        .await
+        .1;
+    assert_eq!(after, snapshot);
+    let (_, csv) = alice.export_csv().await;
+    let destination = Harness::new().await;
+    let mut fresh = destination.client("alice").await;
+    assert_eq!(
+        fresh
+            .call("POST", "/api/settings/restore/commit", Some(after))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        fresh
+            .call(
+                "POST",
+                "/api/imports/restore/commit",
+                Some(json!({"csv":csv}))
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let restored_plan = fresh
+        .call("GET", "/api/budgets/2026-11?as_of=2026-11-30", None)
+        .await
+        .1;
+    assert_eq!(restored_plan["income"][0]["received_cents"], "4201");
+    assert_eq!(restored_plan["categories"][0]["budget_cents"], "0");
+    assert_eq!(
+        fresh
+            .call("GET", "/api/sources", None)
+            .await
+            .1
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let entries = fresh.call("GET", "/api/entries", None).await.1;
+    assert_eq!(entries["entries"][0]["category"]["color"], "clay");
+    assert_eq!(entries["entries"][0]["labels"][0]["name"], "Trip");
+    let rules = fresh.call("GET", "/api/rules", None).await.1;
+    assert_eq!(rules["rules"][1]["enabled"], false);
+    assert_eq!(rules["rules"][1]["pause_reason"], "Target archived.");
+}
+
+#[tokio::test]
+async fn settings_restore_rejects_invalid_stale_and_unauthorized_requests_atomically() {
+    let harness = Harness::new().await;
+    let mut alice = harness.client("alice").await;
+    let mut anonymous = Client {
+        app: harness.app.clone(),
+        cookie: None,
+        csrf: None,
+    };
+    assert_eq!(
+        anonymous
+            .call("GET", "/api/exports/settings.json", None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        alice
+            .send(
+                "POST",
+                "/api/settings/restore/commit",
+                Some(settings_fixture()),
+                false,
+                ORIGIN
+            )
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let mut bad = Vec::new();
+    let mut file = settings_fixture();
+    file["version"] = json!(2);
+    bad.push(file);
+    let mut file = settings_fixture();
+    file["budgets"][0]["income"][0]["amount_cents"] = json!("9223372036854775808");
+    bad.push(file);
+    let mut file = settings_fixture();
+    file["rules"][0]["source_id"] = json!(uuid::Uuid::new_v4().to_string());
+    bad.push(file);
+    let mut file = settings_fixture();
+    file["rules"][0]["enabled"] = json!(true);
+    bad.push(file);
+    let mut file = settings_fixture();
+    let duplicate = file["classifications"][0].clone();
+    file["classifications"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+    bad.push(file);
+    let mut file = settings_fixture();
+    let duplicate = file["budgets"][0]["income"][0].clone();
+    file["budgets"][0]["income"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+    bad.push(file);
+    for input in bad {
+        for path in [
+            "/api/settings/restore/preview",
+            "/api/settings/restore/commit",
+        ] {
+            assert_eq!(
+                alice.call("POST", path, Some(input.clone())).await.0,
+                StatusCode::UNPROCESSABLE_ENTITY
+            );
+        }
+        assert_eq!(
+            alice
+                .call("GET", "/api/exports/settings.json", None)
+                .await
+                .1["classifications"],
+            json!([])
+        );
+    }
+    let fixture = settings_fixture();
+    assert_eq!(
+        alice
+            .call(
+                "POST",
+                "/api/settings/restore/preview",
+                Some(fixture.clone())
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    alice.source("Created after preview").await;
+    assert_eq!(
+        alice
+            .call("POST", "/api/settings/restore/commit", Some(fixture))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        alice
+            .call("GET", "/api/exports/settings.json", None)
+            .await
+            .1["profiles"],
+        json!([])
+    );
+}

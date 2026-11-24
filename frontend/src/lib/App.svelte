@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import SettingsPortability from '#lib/features/settings/SettingsPortability.svelte';
   import '#lib/features/classification/classification.css';
   import '#lib/features/rules/rules.css';
   import RuleEditor from '#lib/features/rules/RuleEditor.svelte';
@@ -769,6 +770,9 @@
       Includes entry categories, labels and optional sources. Profiles, rules, budgets and original
       import history are not included.
     </p>
+    {#key user?.id}
+      <SettingsPortability onrestored={loadData} onunauthorized={sessionExpired} />
+    {/key}
   </section>
 </dialog>
 

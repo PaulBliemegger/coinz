@@ -18,6 +18,7 @@ export interface ExpectedIncome {
   received_cents: string;
   pending_cents: string;
   invalid_receipt_count: number;
+  unrestored_receipt_count: number;
 }
 export interface BudgetPlan {
   month: string;

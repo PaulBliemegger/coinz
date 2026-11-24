@@ -174,6 +174,12 @@
     Recorded income {money(plan.recorded_income_cents)} · Expenses {money(plan.spending_cents)} · Pending
     income {money(plan.pending_income_cents)} · Reserved savings {money(plan.savings_cents)}
   </p>
+  {#if plan.income.some((item) => item.unrestored_receipt_count > 0)}
+    <p class="notice" role="status">
+      Some saved income receipts are waiting for their entries. Restore your CSV before relying on
+      these figures or editing this budget.
+    </p>
+  {/if}
   <section aria-labelledby="budget-comparison-heading">
     <div class="section-heading">
       <h2 id="budget-comparison-heading">Saved plan vs actual</h2>

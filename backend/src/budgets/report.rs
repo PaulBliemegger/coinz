@@ -135,7 +135,15 @@ pub async fn load(
         };
         planned.push(amount);
         pending.push(outstanding);
+        let unrestored_receipt_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM portable_income_receipts WHERE user_id=? AND expected_id=?",
+        )
+        .bind(owner)
+        .bind(&id)
+        .fetch_one(&mut *conn)
+        .await?;
         income.push(Income {
+            unrestored_receipt_count: unrestored_receipt_count as usize,
             id,
             name,
             planned_cents: amount.to_string(),

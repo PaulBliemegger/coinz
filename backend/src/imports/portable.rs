@@ -370,7 +370,8 @@ pub async fn link(
     reference: &str,
 ) -> Result<()> {
     sqlx::query("INSERT INTO portable_entry_refs(user_id,reference,transaction_id) VALUES(?,?,?) ON CONFLICT(user_id,reference) DO NOTHING")
-        .bind(owner).bind(reference).bind(id).execute(conn).await?;
+        .bind(owner).bind(reference).bind(id).execute(&mut *conn).await?;
+    crate::settings_portability::reconnect(conn, owner, id, reference).await?;
     Ok(())
 }
 

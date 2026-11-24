@@ -43,6 +43,7 @@ backend/
     classification_deletion.rs  Counted deletion with stale-review protection
     rules/                Deterministic matching, owned rules and history application
     imports/              CSV parsing, preview, matching, commit and batch history
+    settings_portability/ Versioned setup snapshots and empty-account restoration
     domain.rs             Pure parsing/calculation rules
     db.rs                 SQLite setup and migrations
     error.rs              Shared safe API errors
@@ -202,3 +203,10 @@ snapshot. Native restoration resolves/creates names and sources under the import
 write lock, preserves origin and saved assignments, and protects current edits by
 comparing reference matches to live fields. Normal bank import limits and routes
 remain unchanged; bounded native restore endpoints accept larger snapshots.
+
+Settings portability uses typed version-1 JSON and an empty-account restore guard,
+rechecked under `BEGIN IMMEDIATE`, avoiding speculative merge/overwrite semantics.
+All local relationship IDs are remapped to new owned IDs. Migration 0014 stages
+expected-income portable receipt references until CSV restoration reconnects them
+inside its existing transaction. Outstanding receipts survive re-export and block
+budget edits; reports expose their count rather than presenting a complete restore.

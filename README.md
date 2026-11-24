@@ -58,12 +58,13 @@ the selected month.
 
 Verification snapshot (2026-11-24): the owner confirmed the previous full
 `make check` and all 42 desktop/phone browser journeys passed, followed by a
-successful GitHub run. The CSV portability slice adds parser/API tests and two
-browser journeys. Formatting/lint, all 57 Rust tests, frontend type/unit checks and production
-builds passed for this slice; enhanced ownership, archived-assignment and large
-request-envelope tests passed too. The two new browser journeys still need an
-owner-run local check. Agent-run Playwright cannot start its local server because
-this sandbox denies sockets.
+successful GitHub run, and subsequently confirmed the CSV portability journeys
+passed. The settings JSON slice adds temporary-database round-trip/validation
+tests and two desktop/phone browser journeys. Formatting/lint, Clippy, all 59 Rust
+tests, frontend type checks, all 9 frontend unit-test files, and both production
+builds passed. The shared synthetic browser was reviewed at desktop
+and phone widths; upload/restore journeys still need an owner-run check. Agent-run
+Playwright cannot start its local server because this sandbox denies sockets.
 See [agent test permissions](docs/agent-testing.md). The shared browser can be
 used only for the owner-authorized synthetic development session.
 
@@ -253,8 +254,16 @@ than a partial export above either limit.
 
 Missing classification names are created with default appearance; existing setup
 is retained. CSV is an entry copy, not a database backup: original import history,
-bank evidence, profiles, rules and budgets are omitted. Versioned settings
-export/import is the next slice. See [the portability contract](docs/specs/data-portability.md).
+bank evidence, profiles, rules and budgets are omitted from CSV.
+
+Choose **Export settings** in the same Settings panel to save versioned JSON with
+categories/labels (including colour/archive state), sources, profiles, rules and
+monthly budgets. On a fresh installation, create your account, preview and
+restore this JSON into the empty account **before** importing entries. Existing
+setup blocks JSON restoration. Income receipt links reconnect as CSV entries
+are restored; affected budget plans warn and block editing until all linked
+entries are present. Keep both files together and avoid editing between downloads.
+Neither export includes credentials or original import history. See [the portability contract](docs/specs/data-portability.md).
 
 ## Tests and checks
 

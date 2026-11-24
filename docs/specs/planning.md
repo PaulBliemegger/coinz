@@ -103,6 +103,10 @@ reviews, archive behavior and edited receipt lifecycle. The desktop/phone journe
 in `frontend/e2e/budgets.spec.ts` defines editing, matching, savings, copy/reset and
 screenshots. The README records which checks could actually run.
 
+Settings restoration can temporarily leave receipt links waiting for their CSV
+entries. The [portability contract](data-portability.md#settings-json) defines the
+warning, edit guard and reconnection behavior for that state.
+
 ## Deferred
 
 Automatic rollover, envelope funding, annual saving-up targets, label budgets,

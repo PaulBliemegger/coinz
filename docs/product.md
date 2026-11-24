@@ -119,7 +119,7 @@ coverage must remain separate so it cannot be added to detailed entries it alrea
 includes. A one-off migration is acceptable; no general spreadsheet engine is needed.
 
 Per-user entry CSV export and restoration through import review are implemented.
-Versioned settings JSON is the next portability slice; full database recovery
+Versioned per-user settings JSON supports empty-account restoration before CSV; full database recovery
 remains a separate operational backup concern. See [entry export and reimport](specs/data-portability.md).
 
 ## Next slices
