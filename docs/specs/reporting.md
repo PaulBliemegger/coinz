@@ -81,4 +81,5 @@ user's entries affect none of these figures. Invalid/reversed dates are rejected
 dashboard year/month totals and the supported maximum year. The desktop/phone
 journeys in `frontend/e2e/ledger.spec.ts` cover navigation, filters, pagination,
 editing, selection reset, month-picker navigation/keyboard/boundaries and screenshots.
-Labels and label reports remain deferred.
+[Categories and labels](classification.md) defines implemented classification
+filters/entry display and proposed comparison reports.

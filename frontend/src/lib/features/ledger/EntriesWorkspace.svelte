@@ -1,18 +1,25 @@
 <script lang="ts">
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { onMount, tick } from 'svelte';
-  import { api, ApiError, type EntriesPage, type Source } from '#lib/api.ts';
+  import { api, ApiError, type EntriesPage, type Source, type Transaction } from '#lib/api.ts';
   import { localDate, money } from '#lib/money.ts';
+  import type { ClassificationCatalog } from '#lib/features/classification/types.ts';
   import EntriesList from './EntriesList.svelte';
   let {
     sources,
+    catalog,
+    oncatalogchanged,
     always,
     refresh,
     onchanged,
+    oncreaterule,
     onunauthorized,
   }: {
     onunauthorized: () => void;
+    oncreaterule: (entry: Transaction) => void;
     sources: Source[];
+    catalog: ClassificationCatalog;
+    oncatalogchanged: () => Promise<void>;
     always: boolean;
     refresh: number;
     onchanged: (notice: string) => Promise<void>;
@@ -24,6 +31,13 @@
   let search = $state('');
   let appliedSearch = $state('');
   let page = $state(1);
+  let categoryIds = $state<string[]>([]);
+  let labelIds = $state<string[]>([]);
+  let uncategorized = $state(false);
+  let unlabeled = $state(false);
+  let labelMatch = $state('any');
+  let includeArchived = $state(false);
+  let loadedQuery = '';
   let data = $state<EntriesPage | null>(null);
   let loading = $state(false);
   let error = $state('');
@@ -57,6 +71,11 @@
       if (end) params.set('end', end);
     }
     if (appliedSearch) params.set('q', appliedSearch);
+    if (categoryIds.length) params.set('category_ids', categoryIds.join(','));
+    if (labelIds.length) params.set('label_ids', labelIds.join(','));
+    if (uncategorized) params.set('uncategorized', 'true');
+    if (unlabeled) params.set('unlabeled', 'true');
+    params.set('label_match', labelMatch);
     return params.toString();
   });
   $effect(() => {
@@ -64,12 +83,15 @@
     void refresh;
     void retry;
     let active = true;
-    loading = true;
+    let previouslyFocused: Element | null = null;
+    loading = path !== loadedQuery;
     error = '';
     api<EntriesPage>(`/entries?${path}`)
       .then((result) => {
         if (active) {
+          previouslyFocused = document.activeElement;
           data = result;
+          loadedQuery = path;
           page = result.page;
         }
       })
@@ -88,6 +110,8 @@
               document.getElementById(pendingFocus) ?? document.getElementById('ledger-heading')
             )?.focus();
             pendingFocus = undefined;
+          } else if (active && previouslyFocused && !previouslyFocused.isConnected) {
+            document.getElementById('ledger-heading')?.focus();
           }
         }
       });
@@ -151,6 +175,74 @@
     </label><button class="button">Search</button>
   </form>
 </section>
+<section class="classification-filters" aria-label="Classification filters">
+  <details>
+    <summary>
+      Categories{categoryIds.length || uncategorized
+        ? ` · ${categoryIds.length + Number(uncategorized)} selected`
+        : ''}
+    </summary>
+    <div class="classification-filter-options">
+      <label class="setup-choice">
+        <input
+          type="checkbox"
+          bind:checked={uncategorized}
+          onchange={() => (page = 1)}
+        />Uncategorized
+      </label>
+      {#each catalog.categories.filter((c) => includeArchived || !c.archived || categoryIds.includes(c.id)) as item (item.id)}<label
+          class="setup-choice"
+        >
+          <input
+            type="checkbox"
+            value={item.id}
+            bind:group={categoryIds}
+            onchange={() => (page = 1)}
+          />{item.name}{item.archived ? ' · Archived' : ''}
+        </label>{/each}
+    </div>
+  </details>
+  <details>
+    <summary>
+      Labels{labelIds.length ? ` · ${labelIds.length} selected` : unlabeled ? ' · Unlabeled' : ''}
+    </summary>
+    <div class="classification-filter-options">
+      <label>
+        Match<select bind:value={labelMatch} onchange={() => (page = 1)}>
+          <option value="any">Any selected label</option><option value="all">
+            All selected labels
+          </option>
+        </select>
+      </label>
+      <label class="setup-choice">
+        <input
+          type="checkbox"
+          bind:checked={unlabeled}
+          onchange={() => {
+            labelIds = [];
+            page = 1;
+          }}
+        />Unlabeled
+      </label>
+      {#each catalog.labels.filter((l) => includeArchived || !l.archived || labelIds.includes(l.id)) as item (item.id)}<label
+          class="setup-choice"
+        >
+          <input
+            type="checkbox"
+            value={item.id}
+            bind:group={labelIds}
+            onchange={() => {
+              unlabeled = false;
+              page = 1;
+            }}
+          />{item.name}{item.archived ? ' · Archived' : ''}
+        </label>{/each}
+    </div>
+  </details>
+  <label class="setup-choice">
+    <input type="checkbox" bind:checked={includeArchived} />Include archived
+  </label>
+</section>
 <p class="muted">
   {period === 'custom' && !start && !end
     ? 'All recorded history'
@@ -186,9 +278,13 @@
       <span class="muted">{data.totals.transaction_count} matching</span>
     </div>
     {#if data.entries.length}
-      {#key `${query}:${refresh}`}<EntriesList
+      {#key query}<EntriesList
           entries={data.entries}
           {sources}
+          {catalog}
+          {oncreaterule}
+          {refresh}
+          {oncatalogchanged}
           {always}
           scope="this page"
           onchanged={changed}

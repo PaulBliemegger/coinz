@@ -1,10 +1,13 @@
 pub mod auth;
+pub mod classification;
+pub mod classification_deletion;
 pub mod db;
 pub mod domain;
 pub mod error;
 pub mod imports;
 pub mod ledger;
 pub mod reports;
+pub mod rules;
 
 use axum::{
     Router,
@@ -77,6 +80,32 @@ pub async fn app(
         )
         .route("/transactions/bulk-delete", post(ledger::bulk_delete))
         .route("/transactions/{id}/provenance", get(ledger::provenance))
+        .route(
+            "/classification",
+            get(classification::catalog).post(classification::create),
+        )
+        .route("/classification/setup", post(classification::setup))
+        .route(
+            "/classification/{id}",
+            axum::routing::put(classification::update).delete(classification_deletion::delete),
+        )
+        .route(
+            "/classification/{id}/deletion-preview",
+            get(classification_deletion::preview),
+        )
+        .route("/rules", get(rules::list).post(rules::create))
+        .route(
+            "/rules/{id}",
+            axum::routing::put(rules::update).delete(rules::delete),
+        )
+        .route("/rules/suggest", post(rules::suggestions))
+        .route("/rules/preview", post(rules::history::preview_definition))
+        .route(
+            "/rules/{id}/apply-preview",
+            get(rules::history::preview_apply),
+        )
+        .route("/rules/{id}/apply", post(rules::history::apply))
+        .route("/transactions/classify", post(classification::assign))
         .route("/summary", get(ledger::summary))
         .route("/entries", get(reports::entries))
         .route("/dashboard", get(reports::dashboard))

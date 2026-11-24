@@ -1,3 +1,5 @@
+import type { RuleSuggestions } from '#lib/features/rules/types.ts';
+import type { ClassificationItem } from '#lib/features/classification/types.ts';
 export interface User {
   id: string;
   username: string;
@@ -12,6 +14,8 @@ export interface Source {
   latest_transaction_date: string | null;
 }
 export interface Transaction {
+  category: ClassificationItem | null;
+  labels: ClassificationItem[];
   id: string;
   source_id: string | null;
   source_name: string | null;
@@ -30,6 +34,7 @@ export interface Summary {
 }
 
 export interface ImportRow {
+  rule_suggestions?: RuleSuggestions;
   record: number;
   date: string;
   description: string;

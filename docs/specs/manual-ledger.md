@@ -44,6 +44,13 @@ positive, with `income` or `expense` determining the stored sign. Stored amounts
 are i64 cents. Return cents as decimal strings and display them exactly with BigInt.
 Derived period totals outside the supported i64 range produce a validation error.
 
+## Categories and labels
+
+The [classification spec](classification.md) owns the single category bucket,
+optional labels, management, setup, manual form, bulk assignment and filters.
+Classification is independent of sources and income/expense. The optional source
+controls in the manual form are secondary and collapsed initially.
+
 ## Entries and reporting
 
 An entry has an optional owned source, strict calendar date (`YYYY-MM-DD`, years 0001–9999),

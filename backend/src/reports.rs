@@ -1,5 +1,5 @@
 use crate::{
-    AppState, auth, domain,
+    AppState, auth, classification, domain,
     error::{AppError, Result},
 };
 use axum::{
@@ -18,6 +18,29 @@ pub struct Filter {
     q: Option<String>,
     page: Option<u32>,
     page_size: Option<u32>,
+    category_ids: Option<String>,
+    label_ids: Option<String>,
+    #[serde(default)]
+    label_match: LabelMatch,
+    #[serde(default)]
+    uncategorized: bool,
+    #[serde(default)]
+    unlabeled: bool,
+}
+#[derive(Deserialize, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum LabelMatch {
+    #[default]
+    Any,
+    All,
+}
+fn ids(value: &Option<String>) -> Vec<&str> {
+    value
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 impl Filter {
     fn validate(&self) -> Result<()> {
@@ -42,11 +65,35 @@ impl Filter {
                 "Use a search of at most 200 characters and a valid page size (1–100).",
             ));
         }
+        for value in [&self.category_ids, &self.label_ids] {
+            let values = ids(value);
+            if values.len() > 100
+                || values.iter().any(|id| uuid::Uuid::parse_str(id).is_err())
+                || values
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+                    != values.len()
+            {
+                return Err(AppError::invalid(
+                    "Choose up to 100 distinct category or label IDs.",
+                ));
+            }
+        }
+        if self.unlabeled && !ids(&self.label_ids).is_empty() {
+            return Err(AppError::invalid(
+                "Choose labels or unlabeled entries, not both.",
+            ));
+        }
         Ok(())
     }
 }
 #[derive(Serialize, FromRow)]
 pub struct Entry {
+    #[sqlx(skip)]
+    category: Option<classification::Item>,
+    #[sqlx(skip)]
+    labels: Vec<classification::Item>,
     id: String,
     source_id: Option<String>,
     source_name: Option<String>,
@@ -90,6 +137,14 @@ pub async fn entries(
     filter.validate()?;
     // A read transaction keeps page contents and all-result totals in one snapshot.
     let mut tx = state.pool.begin().await?;
+    for (kind, values) in [
+        (classification::Kind::Category, ids(&filter.category_ids)),
+        (classification::Kind::Label, ids(&filter.label_ids)),
+    ] {
+        for id in values {
+            classification::owned_item(&mut tx, &user.id, id, kind).await?;
+        }
+    }
     let values = amounts(&filter, &user.id, &mut tx).await?;
     let totals = totals(&values)?;
     let size = filter.page_size.unwrap_or(25);
@@ -127,6 +182,41 @@ fn query<'a>(filter: &'a Filter, owner: &'a str, select: &str) -> QueryBuilder<'
             .push_bind(q.trim())
             .push("))>0");
     }
+    let categories = ids(&filter.category_ids);
+    if !categories.is_empty() || filter.uncategorized {
+        sql.push(" AND (");
+        if !categories.is_empty() {
+            sql.push("EXISTS(SELECT 1 FROM entry_categories ec WHERE ec.user_id=t.user_id AND ec.transaction_id=t.id AND ec.category_id IN (");
+            let mut list = sql.separated(",");
+            for id in categories {
+                list.push_bind(id);
+            }
+            sql.push("))");
+            if filter.uncategorized {
+                sql.push(" OR ");
+            }
+        }
+        if filter.uncategorized {
+            sql.push("NOT EXISTS(SELECT 1 FROM entry_categories ec WHERE ec.user_id=t.user_id AND ec.transaction_id=t.id)");
+        }
+        sql.push(")");
+    }
+    let labels = ids(&filter.label_ids);
+    if filter.label_match == LabelMatch::All {
+        for id in labels {
+            sql.push(" AND EXISTS(SELECT 1 FROM entry_labels el WHERE el.user_id=t.user_id AND el.transaction_id=t.id AND el.label_id=").push_bind(id).push(")");
+        }
+    } else if !labels.is_empty() {
+        sql.push(" AND EXISTS(SELECT 1 FROM entry_labels el WHERE el.user_id=t.user_id AND el.transaction_id=t.id AND el.label_id IN (");
+        let mut list = sql.separated(",");
+        for id in labels {
+            list.push_bind(id);
+        }
+        sql.push("))");
+    }
+    if filter.unlabeled {
+        sql.push(" AND NOT EXISTS(SELECT 1 FROM entry_labels el WHERE el.user_id=t.user_id AND el.transaction_id=t.id)");
+    }
     sql
 }
 async fn page_rows(
@@ -145,7 +235,12 @@ async fn page_rows(
         .push_bind(size as i64)
         .push(" OFFSET ")
         .push_bind(i64::from(page - 1) * i64::from(size));
-    Ok(sql.build_query_as().fetch_all(conn).await?)
+    let mut entries: Vec<Entry> = sql.build_query_as().fetch_all(&mut *conn).await?;
+    for entry in &mut entries {
+        entry.category = classification::entry_category(conn, owner, &entry.id).await?;
+        entry.labels = classification::entry_labels(conn, owner, &entry.id).await?;
+    }
+    Ok(entries)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

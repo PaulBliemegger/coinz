@@ -35,6 +35,9 @@ backend/
     auth.rs               Identity, sessions, CSRF
     ledger.rs             Optional sources, entry writes and legacy monthly reads
     reports.rs            Paginated entry queries and dashboard read snapshots
+    classification.rs     Owned categories/labels, setup and atomic assignments
+    classification_deletion.rs  Counted deletion with stale-review protection
+    rules/                Deterministic matching, owned rules and history application
     imports/              CSV parsing, preview, matching, commit and batch history
     domain.rs             Pure parsing/calculation rules
     db.rs                 SQLite setup and migrations
@@ -100,13 +103,33 @@ scaffolding directories, generic utility collections, and required layers.
   Owned reusable layouts and revisions (migration 0008) pin profile interpretation
   at preview/commit. Commit checks the revision under the write lock and stores an
   immutable layout snapshot on the batch and original row evidence. Description
-  drafts affect new transactions only; original parsed fields continue to drive
+  and classification drafts affect new transactions only; original parsed fields continue to drive
   matching. Same-file reinterpretations that change original fields conflict.
   Batch counts/member roles and transaction revisions (migration 0007) support
   removal with a review fingerprint rechecked under the write lock. Existing
   `added` versus `known`/`matched` roles express one creating batch without an
   additional ownership table. See [import history](specs/import-history.md) for
   removal rules and the [CSV spec](specs/csv-import.md) for matching semantics.
+- Classification vocabulary uses a kind discriminator for category versus label.
+  Separate category/label assignment tables enforce one category per entry and
+  multiple labels without rebuilding the financial ledger. Composite foreign keys
+  enforce ownership and vocabulary kind. No category assignment means Uncategorized.
+  Imports validate selected drafts under the same write lock and capture the
+  initial revision after assigning category/labels, keeping initial classification
+  inside the import baseline. Assignment triggers increment the existing revision
+  for subsequent import-removal protection;
+  renaming/archive does not rewrite ledger entries. Filters use EXISTS rather than
+  multiplicative joins, and entry classification is loaded inside report snapshots.
+- Local rules use owned normalized targets and a per-user ruleset revision
+  (migration 0010). Pure matching is separate from HTTP/storage. Import preview
+  carries that revision; commit rechecks it under the existing write lock before
+  assigning suggestions. Explicit classification drafts override suggestions;
+  conflicting categories require an explicit choice. Source restrictions are
+  optional and independent of parsing profiles. Manual entry requests suggestions
+  without changing normal entry-creation semantics. History application and
+  classification deletion use fingerprints rechecked atomically. Archiving/deleting
+  a target pauses dependent rules and invalidates stale rule previews. No external
+  services, model runtime, or custom rule scripting language is needed.
 - Field-specific PATCH operations preserve unrelated entry edits. Migration 0005
   stores explicit entry origin independently of editable source metadata.
   Migration 0003 preserves former accounts as sources and retires balance tables;
@@ -127,6 +150,10 @@ scaffolding directories, generic utility collections, and required layers.
   dependency; [reporting](specs/reporting.md) defines navigation and focus behavior.
 - Password hashing uses Argon2id; `tower-sessions` and its SQLx SQLite store manage
   opaque sessions. No custom crypto or session-token implementation.
+- Migration SQL uses LF line endings, pinned by `.gitattributes`, because SQLx
+  checksums the exact file bytes. Applied migrations stay immutable; schema changes
+  use a new version. `backend/build.rs` tracks the migration directory so adding
+  a file rebuilds the embedded migrator on stable Rust.
 - Migrations run on connection/startup. Expired session records are cleaned at app
   assembly; session loading enforces expiry. Additional cleanup can follow usage.
 - Tests use synthetic data and temporary databases. Full checks run through

@@ -1,7 +1,26 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import '#lib/features/classification/classification.css';
+  import '#lib/features/rules/rules.css';
+  import RuleEditor from '#lib/features/rules/RuleEditor.svelte';
+  import RuleExplanation from '#lib/features/rules/RuleExplanation.svelte';
+  import type { RuleSeed, RuleSuggestions } from '#lib/features/rules/types.ts';
+  import ClassificationEditor from '#lib/features/classification/ClassificationEditor.svelte';
+  import ClassificationManager from '#lib/features/classification/ClassificationManager.svelte';
+  import type {
+    ClassificationCatalog,
+    ClassificationChange,
+  } from '#lib/features/classification/types.ts';
   import { resolve } from '$app/paths';
-  import { api, ApiError, setCsrf, type Source, type Session, type User } from '#lib/api.ts';
+  import {
+    api,
+    ApiError,
+    setCsrf,
+    type Source,
+    type Session,
+    type User,
+    type Transaction,
+  } from '#lib/api.ts';
   import { localDate } from '#lib/money.ts';
   import ImportDialog from '#lib/features/imports/ImportDialog.svelte';
   import EntriesWorkspace from '#lib/features/ledger/EntriesWorkspace.svelte';
@@ -14,7 +33,7 @@
     type Appearance,
   } from '#lib/appearance.ts';
   import { escapeToCancel } from '#lib/features/ledger/escape.ts';
-  let { view = 'home' }: { view?: 'home' | 'entries' | 'imports' } = $props();
+  let { view = 'home' }: { view?: 'home' | 'entries' | 'imports' | 'organize' } = $props();
   let refresh = $state(0);
 
   let user = $state<User | null>(null);
@@ -25,6 +44,86 @@
   let formError = $state('');
   let notice = $state('');
   let sources = $state<Source[]>([]);
+  let catalog = $state<ClassificationCatalog>({ categories: [], labels: [], setup_complete: true });
+  let entryCategory = $state<string | null>(null);
+  let entryLabels = $state<string[]>([]);
+  let classificationBusy = $state(false);
+  let entryOpen = $state(false);
+  let entryCategoryManual = $state(false);
+  let entryLabelsManual = $state(false);
+  let entrySuggestions = $state<RuleSuggestions | null>(null);
+  let suggestionError = $state('');
+  let ruleSeed = $state<RuleSeed | null>(null);
+  let recordedRuleSeed = $state<RuleSeed | null>(null);
+  let ruleDialog = $state<HTMLDialogElement>();
+  let ruleBusy = $state(false);
+  $effect(() => {
+    if (ruleSeed && ruleDialog && !ruleDialog.open) ruleDialog.showModal();
+  });
+  $effect(() => {
+    const description = entryDescription.trim();
+    const source = entrySource;
+    void refresh;
+    const open = entryOpen;
+    let active = true;
+    entrySuggestions = null;
+    suggestionError = '';
+    if (!open || !description || description.length > 200) return;
+    const timeout = setTimeout(() => {
+      api<RuleSuggestions>('/rules/suggest', 'POST', { description, source_id: source || null })
+        .then((plan) => {
+          if (active) entrySuggestions = plan;
+        })
+        .catch((cause) => {
+          if (active && cause instanceof ApiError && cause.status === 401) sessionExpired();
+          if (active)
+            suggestionError =
+              cause instanceof Error ? cause.message : 'Could not load rule suggestions.';
+        });
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  });
+  function acceptSuggestions() {
+    if (!entrySuggestions) return;
+    if (!entryCategoryManual && !entrySuggestions.conflict)
+      entryCategory = entrySuggestions.category_id;
+    if (!entryLabelsManual)
+      entryLabels = [...new Set([...entryLabels, ...entrySuggestions.label_ids])];
+  }
+  function createRuleFromEntry(entry: Transaction) {
+    ruleSeed = {
+      description: entry.description,
+      category_id: entry.category?.id ?? null,
+      label_ids: entry.labels.map((l) => l.id),
+    };
+  }
+  const draftCategory = $derived(catalog.categories.find((c) => c.id === entryCategory) ?? null);
+  const draftLabels = $derived(catalog.labels.filter((l) => entryLabels.includes(l.id)));
+  async function draftClassification(change: ClassificationChange) {
+    if (change.action === 'set_category') {
+      entryCategory = change.category_id;
+      entryCategoryManual = true;
+    } else if (change.action === 'add_labels')
+      entryLabels = [...new Set([...entryLabels, ...change.label_ids])];
+    else entryLabels = entryLabels.filter((id) => !change.label_ids.includes(id));
+    if (change.action !== 'set_category') entryLabelsManual = true;
+  }
+  async function reloadCatalog() {
+    const version = loadVersion;
+    const next = await api<ClassificationCatalog>('/classification');
+    if (version === loadVersion && user) catalog = next;
+  }
+  async function skipSetup() {
+    try {
+      await api('/classification/setup', 'POST', { categories: [], labels: [] });
+      await loadData();
+    } catch (cause) {
+      error = message(cause);
+    }
+  }
 
   let sourceDialog: HTMLDialogElement;
   let transactionDialog: HTMLDialogElement;
@@ -88,7 +187,14 @@
     ++loadVersion;
     user = null;
     sources = [];
+    catalog = { categories: [], labels: [], setup_complete: true };
     importOpen = false;
+    transactionDialog?.close();
+    sourceDialog?.close();
+    ruleSeed = null;
+    recordedRuleSeed = null;
+    entrySuggestions = null;
+    entryOpen = false;
     notice = '';
     loading = false;
     error = 'Your session has ended. Please log in again.';
@@ -99,9 +205,13 @@
     loading = true;
     error = '';
     try {
-      const nextSources = await api<Source[]>('/sources');
+      const [nextSources, nextCatalog] = await Promise.all([
+        api<Source[]>('/sources'),
+        api<ClassificationCatalog>('/classification'),
+      ]);
       if (version !== loadVersion) return;
       sources = nextSources;
+      catalog = nextCatalog;
       refresh += 1;
     } catch (cause) {
       if (version !== loadVersion) return;
@@ -143,7 +253,12 @@
       await api('/logout', 'POST');
       ++loadVersion;
       user = null;
+      ruleSeed = null;
+      recordedRuleSeed = null;
+      entrySuggestions = null;
+      entryOpen = false;
       sources = [];
+      catalog = { categories: [], labels: [], setup_complete: true };
 
       notice = '';
       await bootstrap();
@@ -185,6 +300,11 @@
     entryKind = 'expense';
     entryAmount = '';
     entryDescription = '';
+    entryCategory = null;
+    entryLabels = [];
+    entryCategoryManual = false;
+    entryLabelsManual = false;
+    entryOpen = true;
     formError = '';
     await tick();
     transactionDialog.showModal();
@@ -201,8 +321,15 @@
         kind: entryKind,
         amount: entryAmount,
         description: entryDescription,
+        category_id: entryCategory,
+        label_ids: entryLabels,
       });
       transactionDialog.close();
+      recordedRuleSeed = {
+        description: entryDescription.trim(),
+        category_id: entryCategory,
+        label_ids: [...entryLabels],
+      };
       notice = 'Transaction recorded.';
       await loadData();
     } catch (cause) {
@@ -286,6 +413,9 @@
         <a href={resolve('/imports')} aria-current={view === 'imports' ? 'page' : undefined}>
           Imports
         </a>
+        <a href={resolve('/organize')} aria-current={view === 'organize' ? 'page' : undefined}>
+          Organize
+        </a>
       </nav>
       <details
         class="user-menu"
@@ -333,14 +463,18 @@
               ? 'The bigger picture.'
               : view === 'entries'
                 ? 'Where did it go?'
-                : 'Imports'}
+                : view === 'organize'
+                  ? 'A place for everything.'
+                  : 'Imports'}
           </h1>
           <p class="muted">
             {view === 'home'
               ? 'A few numbers. Considerably less guessing.'
               : view === 'entries'
                 ? 'Every entry, accounted for. Eventually.'
-                : 'A paper trail for your paper trail.'}
+                : view === 'organize'
+                  ? 'Categories for the totals. Labels for the connections.'
+                  : 'A paper trail for your paper trail.'}
           </p>
         </div>
         {#if view === 'entries'}<div class="dashboard-actions">
@@ -356,7 +490,35 @@
           {error}<button class="button quiet" onclick={loadData} disabled={loading}>Retry</button>
         </div>{/if}
       {#if notice}<p class="notice" role="status">{notice}</p>{/if}
-      {#if view === 'home'}<Dashboard
+      {#if recordedRuleSeed}<button
+          class="button quiet"
+          onclick={() => {
+            ruleSeed = recordedRuleSeed;
+            recordedRuleSeed = null;
+          }}
+        >
+          Create rule from the recorded entry…
+        </button>{/if}
+      {#if !catalog.setup_complete && view !== 'organize'}
+        <section class="classification-invitation" aria-label="Set up categories and labels">
+          <p>Make this notebook yours: choose starting categories and optional labels.</p>
+          <div class="classification-actions">
+            <a class="button" href={resolve('/organize')}>Choose your setup</a><button
+              class="button quiet"
+              onclick={skipSetup}
+            >
+              Skip for now
+            </button>
+          </div>
+        </section>
+      {/if}
+      {#if view === 'organize'}<ClassificationManager
+          {catalog}
+          {sources}
+          onchanged={changed}
+          onunauthorized={sessionExpired}
+        />
+      {:else if view === 'home'}<Dashboard
           onunauthorized={sessionExpired}
           {refresh}
           onadd={() => void openEntry()}
@@ -365,9 +527,12 @@
       {:else if view === 'entries'}<EntriesWorkspace
           onunauthorized={sessionExpired}
           {sources}
+          {catalog}
+          oncatalogchanged={reloadCatalog}
           always={alwaysSelection}
           {refresh}
           onchanged={changed}
+          oncreaterule={createRuleFromEntry}
         />
       {:else}<ImportHistory
           onunauthorized={sessionExpired}
@@ -383,6 +548,8 @@
 {#if user && importOpen}
   <ImportDialog
     {sources}
+    {catalog}
+    oncatalogchanged={reloadCatalog}
     initialSource=""
     onclose={() => {
       importOpen = false;
@@ -420,7 +587,7 @@
     </div>
     <label>Source name<input name="name" placeholder="e.g. N26" required maxlength="80" /></label>
     {#if formError}<p class="error" role="alert">{formError}</p>{/if}
-    <button class="button primary full" disabled={busy}>
+    <button class="button primary full" disabled={busy || classificationBusy}>
       {busy ? 'Saving…' : 'Create source'}
     </button>
   </form>
@@ -428,6 +595,7 @@
 
 <dialog
   bind:this={transactionDialog}
+  onclose={() => (entryOpen = false)}
   oncancel={(event) => {
     if (busy) event.preventDefault();
   }}
@@ -470,7 +638,39 @@
     <div class="form-row">
       <label>
         Date<input type="date" bind:value={entryDate} min="0001-01-01" max="9999-12-31" required />
-      </label><label>
+      </label>
+    </div>
+    {#if entrySuggestions?.matched_rules.length}<section
+        class="rule-suggestions"
+        aria-label="Rule suggestions"
+      >
+        <RuleExplanation plan={entrySuggestions} {catalog} confirmed={entryCategoryManual} /><button
+          type="button"
+          class="button quiet"
+          disabled={busy}
+          onclick={acceptSuggestions}
+        >
+          Use suggestions for untouched fields
+        </button>
+        <p class="muted">Your manual category and label choices are kept.</p>
+      </section>{/if}
+    {#if suggestionError}<p class="muted" role="status">
+        {suggestionError} You can still record this entry manually.
+      </p>{/if}
+    <ClassificationEditor
+      {catalog}
+      category={draftCategory}
+      labels={draftLabels}
+      name="this entry"
+      idPrefix="new-entry"
+      disabled={busy}
+      onchange={draftClassification}
+      oncatalogchanged={reloadCatalog}
+      onbusy={(value) => (classificationBusy = value)}
+    />
+    <details>
+      <summary>Source (optional)</summary>
+      <label>
         Source (optional)<select bind:value={entrySource}>
           <option value="">Manual · no source</option>
           {#each sources as source (source.id)}<option value={source.id}>
@@ -478,21 +678,42 @@
             </option>{/each}
         </select>
       </label>
-    </div>
-    <div class="source-help">
-      <p class="form-help">
-        A source records where an entry came from, such as N26 or Erste. You can leave it blank.
-      </p>
-      <button type="button" class="button quiet" onclick={openSource} disabled={busy}>
-        + Add source
-      </button>
-    </div>
+      <div class="source-help">
+        <p class="form-help">
+          A source records where an entry came from, such as N26 or Erste. You can leave it blank.
+        </p>
+        <button type="button" class="button quiet" onclick={openSource} disabled={busy}>
+          + Add source
+        </button>
+      </div>
+    </details>
     {#if formError}<p class="error" role="alert">{formError}</p>{/if}
-    <button class="button primary full" disabled={busy}>
+    <button class="button primary full" disabled={busy || classificationBusy}>
       {busy ? 'Saving…' : 'Record transaction'}
     </button>
   </form>
 </dialog>
+
+{#if ruleSeed}
+  <dialog
+    bind:this={ruleDialog}
+    aria-label="Create labeling rule"
+    oncancel={(event) => {
+      if (ruleBusy) event.preventDefault();
+    }}
+    onclose={() => (ruleSeed = null)}
+  >
+    <RuleEditor
+      {catalog}
+      {sources}
+      seed={ruleSeed}
+      onunauthorized={sessionExpired}
+      onclose={() => (ruleSeed = null)}
+      onsaved={() => changed('Rule saved. Existing entries stay unchanged.')}
+      onbusy={(value) => (ruleBusy = value)}
+    />
+  </dialog>
+{/if}
 
 <dialog bind:this={settingsDialog} class="settings-panel" aria-labelledby="settings-title">
   <div class="dialog-heading">

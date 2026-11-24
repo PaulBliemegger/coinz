@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LabelChip from '#lib/features/classification/LabelChip.svelte';
   import { resolve } from '$app/paths';
   import { api, ApiError, type DashboardData } from '#lib/api.ts';
   import { localDate, money, monthLabel, dateLabel } from '#lib/money.ts';
@@ -132,7 +133,12 @@
     {:else}<ul class="latest-entries">
         {#each data.latest as entry (entry.id)}<li>
             <div>
-              <strong>{entry.description}</strong><span class="muted">{dateLabel(entry.date)}</span>
+              <strong>{entry.description}</strong><span class="muted">
+                {dateLabel(entry.date)} · {entry.category?.name ?? 'Uncategorized'}
+              </span>
+              <div class="entry-labels">
+                {#each entry.labels as item (item.id)}<LabelChip {item} />{/each}
+              </div>
             </div>
             <strong class:income={BigInt(entry.amount_cents) > 0n}>
               {money(entry.amount_cents, true)}

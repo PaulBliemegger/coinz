@@ -85,7 +85,7 @@ not embedded into this initial CSV contract.
   Keep a separate purchase or leave it for later; after importing one entry, a
   later preview can offer it as a match. Fuzzy matching is deferred.
 - Matching associates import provenance with the existing transaction and retains
-  its user-edited fields. Never overwrite future labels/notes. Deduplication uses
+  its user-edited fields. Never overwrite category, labels, or notes. Deduplication uses
   original import evidence, not a user's subsequently edited description/amount.
   Matching retains the entry's current source too. Deleting an imported entry
   removes its associated evidence. Deleted entries become eligible for reimport,
@@ -109,6 +109,9 @@ selection; an omitted selection retains legacy whole-file import behavior.
 Neither endpoint stores the uploaded file itself. Commit stores a batch with
 counts, display filename and entry associations; see [import history](import-history.md). Preview writes no entries/provenance;
 creating a source is a separate explicit operation and survives cancellation.
+
+Classification drafts and their validation are defined in
+[categories and labels](classification.md#import-review-classification).
 
 Profile IDs/revisions and review description overrides are described in the
 [profile API contract](import-profiles.md#persistence-and-api).
@@ -198,5 +201,5 @@ verified. No private exports or running private app are needed.
 
 ## Deferred
 
-Bank-specific adapters, Excel, transfer/refund treatment, and label/report UI
-remain separate work. YAML profile sharing is deferred in the profile spec.
+Bank-specific adapters, Excel, transfer/refund treatment, and richer reports
+remain separate work. [Local labeling rules](labeling-rules.md) are implemented. YAML profile sharing is deferred in the profile spec.

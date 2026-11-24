@@ -1,5 +1,5 @@
 use crate::{
-    AppState, auth, domain,
+    AppState, auth, classification, domain,
     error::{AppError, Result},
 };
 use axum::{
@@ -99,6 +99,8 @@ struct TransactionRow {
 
 #[derive(Serialize)]
 pub struct Transaction {
+    category: Option<classification::Item>,
+    labels: Vec<classification::Item>,
     id: String,
     source_id: Option<String>,
     source_name: Option<String>,
@@ -139,25 +141,31 @@ pub async fn transactions(
 ) -> Result<Json<Vec<Transaction>>> {
     let user = auth::user(&session, &state.pool).await?;
     let (_, rows) = filtered_rows(&state.pool, &user.id, &filter).await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|row| Transaction {
-                id: row.id,
-                source_id: row.source_id,
-                source_name: row.source_name,
-                date: row.date,
-                description: row.description,
-                amount_cents: row.amount_cents.to_string(),
-                origin: row.origin,
-                csv_linked: row.csv_linked,
-            })
-            .collect(),
-    ))
+    let mut conn = state.pool.acquire().await?;
+    let mut entries = Vec::new();
+    for row in rows {
+        entries.push(Transaction {
+            category: classification::entry_category(&mut conn, &user.id, &row.id).await?,
+            labels: classification::entry_labels(&mut conn, &user.id, &row.id).await?,
+            id: row.id,
+            source_id: row.source_id,
+            source_name: row.source_name,
+            date: row.date,
+            description: row.description,
+            amount_cents: row.amount_cents.to_string(),
+            origin: row.origin,
+            csv_linked: row.csv_linked,
+        });
+    }
+    Ok(Json(entries))
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewTransaction {
+    category_id: Option<String>,
+    #[serde(default)]
+    label_ids: Vec<String>,
     source_id: Option<String>,
     date: String,
     description: String,
@@ -189,6 +197,11 @@ pub async fn create_transaction(
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
     sqlx::query("INSERT INTO transactions (id, user_id, source_id, date, description, amount_cents, origin) VALUES (?, ?, ?, ?, ?, ?, 'manual')")
         .bind(&id).bind(&user.id).bind(&input.source_id).bind(input.date).bind(description).bind(amount).execute(&mut *tx).await?;
+    classification::validate_ids(&input.label_ids, true)?;
+    classification::set_category(&mut tx, &user.id, &id, input.category_id.as_deref()).await?;
+    for label in &input.label_ids {
+        classification::change_label(&mut tx, &user.id, &id, label, true).await?;
+    }
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
@@ -200,10 +213,15 @@ pub async fn update_transaction(
     Json(input): Json<NewTransaction>,
 ) -> Result<StatusCode> {
     let user = auth::user(&session, &state.pool).await?;
+    if input.category_id.is_some() || !input.label_ids.is_empty() {
+        return Err(AppError::invalid(
+            "Use the classification action to update categories or labels on an existing entry.",
+        ));
+    }
     let (description, amount) = input.validate(&state.pool, &user.id).await?;
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
     let result = sqlx::query("UPDATE transactions SET source_id = ?, date = ?, description = ?, amount_cents = ? WHERE id = ? AND user_id = ?")
-        .bind(&input.source_id).bind(input.date).bind(description).bind(amount).bind(id).bind(&user.id).execute(&mut *tx).await?;
+        .bind(&input.source_id).bind(input.date).bind(description).bind(amount).bind(&id).bind(&user.id).execute(&mut *tx).await?;
     if result.rows_affected() == 0 {
         return Err(AppError::not_found());
     }

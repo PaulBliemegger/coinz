@@ -53,9 +53,10 @@ rows reuse the round selector, whole-row highlight, row-background toggling,
 keyboard control, and reduced-motion feedback from Entries; read-only previews
 have no selection control. Show all/fewer controls
 are independent for each group. Reloading clears edited selections.
-Changes to date, description, amount, or source increment a
-persistent revision, including edits subsequently reverted. Saving identical
-values does not increment it. Label editing must participate when implemented.
+Changes to date, description, amount, source, category, or label assignments
+increment a persistent revision, including edits subsequently reverted. Saving
+identical values does not increment it. Classification vocabulary rename/archive
+does not change entry revisions; see [categories and labels](classification.md).
 
 Remove N entries reveals adjacent Confirm removal and Cancel controls; no centered
 modal or automatic focus on the destructive action. The count names the actual

@@ -26,7 +26,15 @@ Use a synthetic development runtime for this walkthrough.
 
 The [CSV profile presets](docs/specs/import-profiles.md) support UTF-8 header CSVs,
 comma/semicolon delimiters, three explicit date formats and exact signed EUR
-amounts. Bank-specific adapters, transfer/refund classification, labels, YAML
+amounts. Categories and optional coloured labels are available through **Organize**,
+manual entry, inline/bulk editing, import review, and Entries filters. Setup is skippable and
+existing entries remain Uncategorized. See [classification](docs/specs/classification.md).
+**Organize → Rules** creates local description rules for categories/labels.
+Import review shows editable suggestions and category conflicts; manual entry
+can accept suggestions or keep its own choices. Preview history explicitly before
+applying a rule to existing entries. Category/label deletion previews affected
+entry/rule counts. See [local rules](docs/specs/labeling-rules.md).
+Bank-specific adapters, transfer/refund handling, YAML
 profiles and planning remain deferred. See [product scope](docs/product.md) for
 sequencing and the
 [specification index](docs/specs/README.md) for detailed behavior and feature status.
@@ -34,15 +42,30 @@ Bank balance tracking and reconciliation are outside the core scope.
 
 ### Verification status
 
-Verification snapshot (2026-11-23): `make check` passed formatting, lint, all 29
+Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 43
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
 startup because the agent sandbox denies local sockets; browser assertions and
-visual review remain unverified. See [agent test permissions](docs/agent-testing.md).
+visual review remain unverified. An offline Chromium launch was also unavailable.
+The category/label, import-review, and rule desktop/phone journeys are defined but could not run.
+See [agent test permissions](docs/agent-testing.md).
 The frontend checks ran with Node 26.13.1 and reported an engine warning;
 the supported project version remains Node 24.22.3.
 An earlier Docker image built successfully; the current revision has not been
 deployed or verified against a running container by the agent. This is an early
 development version.
+
+### Migration checksum errors
+
+`VersionMismatch(8)` means the embedded migration bytes differ from the checksum
+recorded when migration 8 was applied. A CRLF checkout of that migration can cause
+this even when the SQL text is unchanged. Migration files are pinned to LF; rebuild
+with `cargo build --locked`, then retry `make dev`. No database reset or checksum
+rewrite is needed for the original LF migration history.
+
+If the error persists, stop and identify the exact migration source originally
+used for that database. Preserve the database and its migration metadata; do not
+delete migration rows or bypass checksum validation. Development agents must not
+inspect a personal database to investigate this.
 
 ## Real data privacy
 
