@@ -37,6 +37,7 @@
   let uncategorized = $state(false);
   let unlabeled = $state(false);
   let labelMatch = $state('any');
+  let selectedMonths = $state<string[]>([]);
   let entryType = $state('all');
   let loadedQuery = '';
   let data = $state<EntriesPage | null>(null);
@@ -50,11 +51,12 @@
   }
   onMount(() => {
     const params = new SvelteURLSearchParams(window.location.search);
+    selectedMonths = params.get('months')?.split(',').filter(Boolean) ?? [];
     categoryIds = params.get('category_ids')?.split(',').filter(Boolean) ?? [];
     uncategorized = params.get('uncategorized') === 'true';
     const requestedType = params.get('entry_type');
     if (requestedType === 'spending' || requestedType === 'income') entryType = requestedType;
-    if (params.has('all') || params.has('start') || params.has('end')) {
+    if (params.has('all') || params.has('start') || params.has('end') || params.has('months')) {
       start = params.get('start') ?? '';
       end = params.get('end') ?? '';
       period = 'custom';
@@ -82,6 +84,7 @@
     if (unlabeled) params.set('unlabeled', 'true');
     params.set('label_match', labelMatch);
     params.set('entry_type', entryType);
+    if (selectedMonths.length) params.set('months', selectedMonths.join(','));
     return params.toString();
   });
   $effect(() => {
@@ -138,13 +141,25 @@
           name="period"
           {value}
           bind:group={period}
-          onchange={() => (page = 1)}
+          onchange={() => {
+            page = 1;
+            selectedMonths = [];
+          }}
         />{label}
       </label>
     {/each}
   </fieldset>
   {#if period === 'year'}<label>
-      Year<input type="number" min="1" max="9999" bind:value={year} onchange={() => (page = 1)} />
+      Year<input
+        type="number"
+        min="1"
+        max="9999"
+        bind:value={year}
+        onchange={() => {
+          page = 1;
+          selectedMonths = [];
+        }}
+      />
     </label>{/if}
   {#if period === 'custom'}<label>
       From<input
@@ -152,7 +167,10 @@
         min="0001-01-01"
         max="9999-12-31"
         bind:value={start}
-        onchange={() => (page = 1)}
+        onchange={() => {
+          page = 1;
+          selectedMonths = [];
+        }}
       />
     </label><label>
       Through<input
@@ -160,7 +178,10 @@
         min="0001-01-01"
         max="9999-12-31"
         bind:value={end}
-        onchange={() => (page = 1)}
+        onchange={() => {
+          page = 1;
+          selectedMonths = [];
+        }}
       />
     </label>{/if}
   <form
@@ -191,6 +212,18 @@
   bind:labelMatch
   onchange={() => (page = 1)}
 />
+{#if selectedMonths.length}<p class="muted">
+    Selected months: {selectedMonths.join(', ')}
+    <button
+      class="button quiet"
+      onclick={() => {
+        selectedMonths = [];
+        page = 1;
+      }}
+    >
+      Clear month selection
+    </button>
+  </p>{/if}
 <p class="muted">
   {period === 'custom' && !start && !end
     ? 'All recorded history'

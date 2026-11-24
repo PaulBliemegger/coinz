@@ -11,6 +11,7 @@ use sqlx::{FromRow, QueryBuilder, Sqlite};
 use tower_sessions::Session;
 
 mod category_spending;
+pub mod split;
 pub mod trends;
 
 #[derive(Deserialize, Default)]
@@ -31,6 +32,7 @@ pub struct Filter {
     unlabeled: bool,
     #[serde(default)]
     entry_type: EntryType,
+    months: Option<String>,
 }
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +59,22 @@ fn ids(value: &Option<String>) -> Vec<&str> {
 }
 impl Filter {
     fn validate(&self) -> Result<()> {
+        if let Some(raw) = &self.months {
+            let values = raw.split(',').collect::<Vec<_>>();
+            if values.is_empty()
+                || values.len() > 12
+                || values
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+                    != values.len()
+            {
+                return Err(AppError::invalid("Choose up to twelve distinct months."));
+            }
+            for month in values {
+                domain::month_range(month)?;
+            }
+        }
         if let Some(s) = &self.start {
             domain::date(s)?;
         }
@@ -198,6 +216,14 @@ fn query<'a>(filter: &'a Filter, owner: &'a str, select: &str) -> QueryBuilder<'
         EntryType::Income => {
             sql.push(" AND t.amount_cents>0");
         }
+    }
+    if let Some(months) = &filter.months {
+        sql.push(" AND substr(t.date,1,7) IN (");
+        let mut list = sql.separated(",");
+        for month in months.split(',') {
+            list.push_bind(month);
+        }
+        sql.push(")");
     }
     if let Some(q) = &filter.q {
         sql.push(" AND instr(lower(t.description),lower(")

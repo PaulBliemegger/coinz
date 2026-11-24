@@ -8,7 +8,7 @@ with preview, duplicate protection and atomic import.
 
 ## First workflow
 
-1. Open Import CSV from Home, Entries, or Imports and choose or create a source.
+1. Open Import CSV from Home, Entries, or Imports and optionally choose or create a source in Optional source.
 2. Select a CSV and choose or create a profile. Map the example columns below, or
    use the explicit layout presets in the profile spec.
 3. Preview dated income/expenses, validation errors, and duplicate candidates.
@@ -16,8 +16,8 @@ with preview, duplicate protection and atomic import.
    Leave other rows for later, then import the selected subset.
 5. Commit atomically and return to the transactions. Cancelling changes no entries.
 
-Require a source for imports: stable IDs describe one export stream, not a global
-bank identity. Manual entries still need no source. The selected source and every
+Sources are optional. With an explicit source, stable IDs describe that export
+stream rather than a global bank identity. A supplied source and every
 matched transaction must belong to the authenticated user. Preview and commit
 require authentication and CSRF protection; the server owns parsing, decisions,
 and totals. Never trust submitted ownership IDs or preview totals.
@@ -102,7 +102,7 @@ not embedded into this initial CSV contract.
 ## HTTP contract
 
 `POST /api/imports/preview` and `POST /api/imports/commit` accept JSON with
-`source_id`, `csv` (the decoded file text), optional `filename` (display basename),
+optional `source_id` (null/omitted means unspecified), `csv` (the decoded file text), optional `filename` (display basename),
 optional `decisions` (default `[]`),
 and optional `selected_records` (CSV record numbers). The UI always sends explicit
 selection; an omitted selection retains legacy whole-file import behavior.
@@ -215,3 +215,27 @@ verified. No private exports or running private app are needed.
 
 Bank-specific adapters, Excel, transfer/refund treatment, and richer reports
 remain separate work. [Local labeling rules](labeling-rules.md) are implemented. YAML profile sharing is deferred in the profile spec.
+
+## Imports without a source
+
+Optional source is collapsed by default; file/profile mapping and import review
+work without creating a source. Imported entries then have no source. History and
+provenance display Not specified. The application does not create a hidden source.
+
+Exact file/record evidence is scoped to the authenticated user and optional source,
+so a repeat with the same scope adds nothing. For a different source-less file,
+bank IDs are not trusted as global identifiers: exact field matches against owned
+entries are review candidates, and changed/unrelated fields do not silently
+conflict just because an ID was reused. Explicit Match/Keep resolves ambiguity.
+Duplicate IDs within a source-less file require review; named sources retain their
+existing stable-ID conflict semantics. Choosing a different source changes the
+provenance scope and may require duplicate review rather than proving identity.
+
+Migration 0012 preserves existing named-source evidence, interpretation snapshots,
+batch memberships and edit baselines while allowing null sources. A non-null
+internal scope key makes source-less file/row uniqueness explicit in SQLite.
+Integration cases cover first import, exact repeat, cross-file ID reuse/review,
+manual matching, history and two-user isolation. Migration coverage seeds existing
+evidence/history and verifies preservation plus deletion/reimport triggers. The
+source-less desktop/phone journey verifies profile/file review and commit with
+Optional source left closed. Browser execution status is recorded in the README.

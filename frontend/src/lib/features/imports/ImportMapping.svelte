@@ -83,7 +83,7 @@
       if (fields.every((f) => current[f])) {
         const preview = await api<{ rows: ImportRow[] }>('/imports/preview', 'POST', {
           csv,
-          source_id: sourceId,
+          source_id: sourceId || null,
           layout: current,
         });
         if (request !== sequence) return;

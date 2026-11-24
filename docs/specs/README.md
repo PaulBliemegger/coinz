@@ -9,12 +9,12 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 | [Manual ledger](manual-ledger.md) | Implemented | Identity, optional sources, entries, period totals, preserved legacy data |
 | [CSV import and duplicate review](csv-import.md) | Implemented | Example format, shared duplicate review, atomic commit |
 | [CSV import profiles](import-profiles.md) | Implemented; browser verification blocked | Reusable profiles and independent editor, guided CSV table mapping, editable import review |
-| [Dashboard, Insights and Entries](reporting.md) | Implemented; browser verification blocked | Home, monthly Insights report, rolling income/expense and category charts, drill-downs, filters, pagination, all-result totals |
+| [Dashboard, Insights and Entries](reporting.md) | Implemented; browser verification blocked | Home, monthly Insights report, annual charts and monthly/average expense splits, drill-downs, filters, pagination, all-result totals |
 | [Categories and labels](classification.md) | Core and import review implemented; browser verification blocked | Single category, optional labels, setup, management, bulk assignment, filters, import drafts and counted deletion; proposed insights |
 | [Local labeling rules](labeling-rules.md) | Implemented; browser verification blocked | Deterministic rules, suggestions, conflicts, historical previews and target lifecycle |
 | [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |
 | [Entry export and reimport](data-portability.md) | Deferred; not implemented | Portable CSV copies, native reimport, boundary with full backups |
-| [Planning](planning.md) | Proposed; not implemented | Monthly assumptions, commitments, one-off scenarios, optional later calculator |
+| [Monthly budgets](planning.md) | Implemented; browser verification blocked | Category targets, savings reservations, named expected income, receipt matching, copy and year context |
 
 Implemented means the behavior exists in source; it does not imply completed
 browser/visual verification. The [README](../../README.md#verification-status)

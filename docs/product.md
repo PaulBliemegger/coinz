@@ -12,14 +12,15 @@ account balances. Building and learning are also part of the project's value.
 Local user creation, login/logout, isolated private data, manual income/expenses,
 editing/deleting entries, a home dashboard with monthly/yearly spending and a
 monthly category spending breakdown linking to Entries, an Insights page with
-the full monthly category report, rolling income/expense and category trends, a
+annual income/expense and category graphs, monthly/average expense splits, monthly
+budgets with savings reservations and expected-income matching, a
 paginated Entries workspace with period/search/category/label filters, categories
 and coloured labels with setup, management, counted deletion and import-review
 drafts, local labeling rules with previewed history application, exact money handling,
 and reusable CSV import profiles with guided column mapping, editable review,
 duplicate protection and batch history. Profiles can also be created/edited
 directly in Imports without a file. A source
-is optional provenance metadata, not a bank ledger. A new user can record an entry
+is optional provenance metadata (including for imports), not a bank ledger. A new user can record an entry
 immediately without setup. The warm Sunday Studio palette
 and restrained dry humor remain the visual direction.
 
@@ -30,7 +31,7 @@ behavior lives in the feature specs.
 The account/snapshot interface and API are retired. Existing account identities
 become transaction sources; old opening amounts and snapshots are preserved as
 inactive legacy records. See the [manual-ledger spec](specs/manual-ledger.md).
-Planning, bank-specific import adapters,
+Bank-specific import adapters,
 and richer insights are not yet implemented. The
 [example importer](specs/csv-import.md) provides a synthetic workflow for testing
 the next ideas.
@@ -41,8 +42,9 @@ the next ideas.
   by period and search (source filtering remains available in the legacy API). Routine manual entry should stay short.
 - **Insights:** explore period income/spending/net, merchants, labels, recurring
   costs, and comparisons. Charts link to their underlying transactions.
-- **Planning:** monthly expected income/spending, budget targets, recurring
-  commitments, and one-off choices. See the [planning direction](specs/planning.md).
+- **Planning:** implemented monthly category budgets, savings reservations and
+  named expected income with receipt matching. Recurring commitments and scenarios
+  remain deferred. See [monthly budgets](specs/planning.md).
 
 These are product responsibilities, not a requirement to add empty navigation
 pages. Evolve screens through working slices and actual use. No dashboard-builder
@@ -140,8 +142,10 @@ Current implemented behavior is summarized above and detailed in the
 
 Initially one person, EUR, laptop/phone browser access, Docker Compose, later NAS.
 Logins and user ownership remain required. Bank API sync, multi-currency, investments,
-net worth, native apps, offline sync, household sharing, public signup, and deployment
-automation are deferred. Pre-v1.0 compatibility is not required, but data must never
+net worth, native apps, offline sync, household sharing, and public signup are
+deferred. GitHub checks and multi-platform dev image delivery are defined; private
+deployment remains an explicit owner action. See the README for workflow setup
+and verification status. Pre-v1.0 compatibility is not required, but data must never
 be reset implicitly. Keep private runtime data inaccessible to the development
 agent; [privacy requirements](privacy.md) take precedence over convenient debugging.
 

@@ -26,7 +26,7 @@ pub struct Batch {
     excluded: i64,
     removed: i64,
 }
-const BATCH_SELECT: &str = "SELECT b.id,b.filename,s.name AS source_name,b.created_at,b.start_date,b.end_date,b.added,b.matched,b.known,b.excluded,b.removed FROM import_batches b JOIN transaction_sources s ON s.id=b.source_id AND s.user_id=b.user_id";
+const BATCH_SELECT: &str = "SELECT b.id,b.filename,COALESCE(s.name,'Not specified') AS source_name,b.created_at,b.start_date,b.end_date,b.added,b.matched,b.known,b.excluded,b.removed FROM import_batches b LEFT JOIN transaction_sources s ON s.id=b.source_id AND s.user_id=b.user_id";
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {

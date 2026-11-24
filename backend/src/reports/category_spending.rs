@@ -10,10 +10,10 @@ use crate::{
 
 #[derive(Serialize)]
 pub struct CategorySpending {
-    category: Option<Item>,
-    spending_cents: String,
-    entry_count: usize,
-    share_percent: String,
+    pub(super) category: Option<Item>,
+    pub(super) spending_cents: String,
+    pub(super) entry_count: usize,
+    pub(super) share_percent: String,
 }
 
 #[derive(FromRow)]

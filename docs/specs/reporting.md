@@ -43,38 +43,51 @@ compact panel; Explore insights opens this page with Home's selected month.
 Direct navigation defaults to the current calendar month. A valid `month=YYYY-MM`
 URL parameter selects that month; malformed/out-of-range parameters fall back to
 the current month. Loading/errors hide old figures; session expiry returns to login.
-Two monthly trend charts show income versus expenses and expenses for a selected
+Two annual trend charts show income versus expenses and expenses for a selected
 category. Label analysis and automatic period-change comparisons remain proposed.
 
-### Monthly trends
+### Annual charts and monthly expense splits
 
-A shared selector chooses six (default) or twelve rolling calendar months ending
-in the selected overview month. The window crosses years and includes months with
-no entries as zero; at year 0001 it shortens rather than inventing earlier dates.
-The category selector defaults to Uncategorized and includes owned archived and
-unused categories. Selecting a category affects only the category series; the
-income/expenses chart always covers all categories. Selections persist while
-browsing overview months on this page.
+An Overview year control selects January–December for both annual graphs, placed
+above the Monthly overview. The category selector changes only the category
+expense series and includes Uncategorized, archived and unused categories. The
+monthly picker selects the month below and also synchronizes the overview year.
+Range selectors have been removed from the UI; the earlier rolling API remains
+available for compatibility.
 
-Income/expenses use paired bars on a common scale. Category expenses use a single
-bar per month. Scales are independent between the charts. Each has a named legend,
-its upper scale amount, accessible entry links and an expandable exact-figures
-table. The income/expenses table also shows recorded net. Narrow layouts scroll
-the charts within their containers; all figures are available without hover.
-All-zero series show explicit empty states and retain their exact-figures tables.
+Income and expenses use paired bars on a common scale; category expenses use a
+separate scale. Y axes expose euro ticks and horizontal grid lines. Steps start
+at €50 and increase to keep at most five readable intervals. Exact-figures tables
+retain their headings on phones and scroll within their containers, as do charts.
+All recorded calendar-period entries, including future-dated records, are included.
+The current month is marked In progress and later months Future. There is no
+extrapolation or automatic comparison of partial and complete months.
 
-The browser's local calendar marks the current month In progress and later months
-Future, in the chart and table. All recorded entries within each calendar month
-are included, including future-dated entries. No extrapolation or automatic
-comparison of partial and complete months is presented. Empty/past months do not
-establish complete coverage. These are recorded trends, not forecasts or balances.
+Below the monthly summary, two doughnut charts show that month's category split
+and an average month. The average explicitly lists its selected completed months
+from the same year. Defaults include completed months with recorded entries;
+this is not proof of complete coverage, and the user can deselect partial history.
+Current/future calendar months cannot be selected. Empty completed months can be
+included explicitly as zero; an empty selection has no average. Changing months
+within the year preserves the selection; changing year resets it. Each chart has
+exact category amounts/percentages and consistent colours keyed to the catalog.
 
-Income bars open that month's Income entries; expense bars open Expenses entries.
-Category bars also apply that category or Uncategorized, including archives.
-Both trend series are read from one owned backend snapshot. The selected-month
-summary/breakdown uses its own dashboard request. Trend loading/errors hide old
-charts/tables and offer Retry trends; superseded responses are ignored and session
-expiry returns to login. Existing figures are never displayed under changed filters.
+The backend divides combined category expenses by the selected month count.
+The total is rounded half-up to cents; largest-remainder allocation distributes
+rounding cents among categories so slices sum exactly to that average total.
+Labels never multiply amounts. Archived and Uncategorized spending remain
+included. Charts use backend cents; only visual ratios become floating-point.
+
+Bar and pie links open the underlying entries. Income bars choose Income;
+expense bars/pies choose Expenses and category pies also choose their category.
+Average links include the exact selected month set, including gaps. Entries shows
+that set explicitly, combines it with its other filters, and clears it on an
+explicit period/date change. Clear month selection removes only that constraint.
+Totals in Entries are actual combined expenses, rather than a monthly average.
+
+Each report endpoint reads one owned snapshot. Loading/errors hide stale chart
+figures and expose Retry; superseded requests are ignored. These are records and
+averages, not forecasts, completeness guarantees or bank balances.
 
 ## Spending by category
 
@@ -151,8 +164,9 @@ page after deletions. No all-results bulk deletion is offered: use
   `entry_count`, and one-decimal `share_percent` string.
 - Reads are session-owned and use one SQLite snapshot per response. Financial
   aggregation remains exact checked integer arithmetic on the backend.
-- `GET /api/insights/trends?month=YYYY-MM&months=6&category_id=…` returns
-  `{ category, months }`. Months accepts 6 or 12; omission means 6. Omitted
+- `GET /api/insights/trends?year=YYYY&category_id=…` returns
+  `{ category, months }` with January–December. The legacy `month` plus optional
+  `months=6|12` rolling form remains accepted; it cannot be combined with `year`. Omitted
   `category_id` selects Uncategorized; a supplied ID must be an owned category
   (including archived). Each chronological month has the usual totals plus
   `category_spending_cents` (a string) and `category_entry_count` for expenses only.
@@ -189,3 +203,15 @@ filters, years 0001/9999, large cents and monthly overflow. Frontend trend-displ
 tests cover exact chart scaling, calendar markers and income drill-down boundaries.
 The Insights browser journey additionally defines range/category selection,
 read-error recovery, chart/table drill-down and responsive screenshots.
+
+- `GET /api/insights/split?month=YYYY-MM&as_of=YYYY-MM-DD&average_months=…`
+  returns current/average slices and totals, selected months and twelve month
+  choices with eligibility/entry counts. Omit `average_months` for defaults; an
+  explicit empty string selects no months. Dates are calendar dates and eligibility
+  is based on the browser-supplied as-of date.
+- Entries additionally accepts `months=YYYY-MM,…` (up to twelve distinct valid
+  months) for exact-set drill-downs. All other filters still intersect normally.
+
+Year/split integration evidence includes full-year bounds, explicit gapped month
+sets, empty selections, completed-month validation, two-user isolation and balanced
+cent rounding. Frontend axis tests verify readable bounded euro ticks.

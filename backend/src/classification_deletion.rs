@@ -17,6 +17,7 @@ use tower_sessions::Session;
 pub struct Preview {
     entry_count: usize,
     rule_count: usize,
+    budget_month_count: usize,
     token: String,
 }
 async fn review(conn: &mut SqliteConnection, owner: &str, id: &str) -> Result<Preview> {
@@ -39,10 +40,13 @@ async fn review(conn: &mut SqliteConnection, owner: &str, id: &str) -> Result<Pr
         .fetch_all(&mut *conn)
         .await?;
     let rules = rules::affected_rules(conn, owner, id).await?;
-    let bytes = serde_json::to_vec(&(id, item, &entries, &rules)).map_err(AppError::internal)?;
+    let budgets: Vec<(String,i64,i64)> = sqlx::query_as("SELECT b.month,b.amount_cents,m.revision FROM category_budgets b JOIN budget_months m ON m.user_id=b.user_id AND m.month=b.month WHERE b.user_id=? AND b.category_id=? ORDER BY b.month").bind(owner).bind(id).fetch_all(&mut *conn).await?;
+    let bytes =
+        serde_json::to_vec(&(id, item, &entries, &rules, &budgets)).map_err(AppError::internal)?;
     Ok(Preview {
         entry_count: entries.len(),
         rule_count: rules.len(),
+        budget_month_count: budgets.len(),
         token: format!("{:x}", Sha256::digest(bytes)),
     })
 }
@@ -73,10 +77,16 @@ pub async fn delete(
     let current = review(&mut tx, &user.id, &id).await?;
     if current.token != input.token {
         return Err(AppError::invalid(
-            "The affected entries or rules changed. Review deletion again.",
+            "The affected entries, rules or budgets changed. Review deletion again.",
         ));
     }
     rules::pause_target(&mut tx, &user.id, &id, true).await?;
+    sqlx::query("UPDATE budget_months SET revision=revision+1 WHERE user_id=? AND month IN (SELECT month FROM category_budgets WHERE user_id=? AND category_id=?)").bind(&user.id).bind(&user.id).bind(&id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM category_budgets WHERE user_id=? AND category_id=?")
+        .bind(&user.id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM entry_categories WHERE user_id=? AND category_id=?")
         .bind(&user.id)
         .bind(&id)

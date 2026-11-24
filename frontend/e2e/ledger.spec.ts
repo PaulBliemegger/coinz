@@ -70,6 +70,7 @@ async function reviewExample(dialog: Locator) {
 async function importFile(page: Page, name: string, csv: string, sourceName: string) {
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByRole('button', { name: '+ New source', exact: true }).click();
   await dialog.getByLabel('New source name').fill(sourceName);
   await dialog.getByRole('button', { name: 'Create import source', exact: true }).click();
@@ -341,6 +342,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   // Deletion releases all evidence so the file can be imported again.
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByLabel('Import source').selectOption({ label: `History ${info.project.name}` });
   await dialog
     .getByLabel('CSV file')
@@ -355,6 +357,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await expect(dialog).not.toBeVisible();
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByLabel('Import source').selectOption({ label: `History ${info.project.name}` });
   await dialog
     .getByLabel('CSV file')
@@ -571,6 +574,7 @@ test('guided profile mapping, draft descriptions, reuse and original evidence', 
   await clean(page);
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByRole('button', { name: '+ New source', exact: true }).click();
   const source = `Profile stream ${info.project.name}`;
   await dialog.getByLabel('New source name').fill(source);
@@ -639,6 +643,7 @@ test('guided profile mapping, draft descriptions, reuse and original evidence', 
   await expect(dialog).not.toBeVisible();
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByLabel('Import source', { exact: true }).selectOption({ label: source });
   await dialog.getByLabel('CSV file').setInputFiles(upload);
   await expect(dialog.getByLabel('Import profile', { exact: true })).toBeEnabled();

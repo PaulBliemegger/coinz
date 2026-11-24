@@ -16,7 +16,8 @@ use crate::{
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrendFilter {
-    month: String,
+    month: Option<String>,
+    year: Option<String>,
     months: Option<u8>,
     category_id: Option<String>,
 }
@@ -59,7 +60,23 @@ pub async fn get(
     Query(input): Query<TrendFilter>,
 ) -> Result<Json<Trends>> {
     let user = auth::user(&session, &state.pool).await?;
-    let window = month_window(&input.month, input.months.unwrap_or(6))?;
+    let window = if let Some(year) = &input.year {
+        if input.month.is_some() || input.months.is_some() || year.len() != 4 {
+            return Err(AppError::invalid(
+                "Choose a year or a rolling month window.",
+            ));
+        }
+        domain::month_range(&format!("{year}-01"))?;
+        (1..=12).map(|m| format!("{year}-{m:02}")).collect()
+    } else {
+        month_window(
+            input
+                .month
+                .as_deref()
+                .ok_or_else(|| AppError::invalid("Choose a year or month."))?,
+            input.months.unwrap_or(6),
+        )?
+    };
     let mut tx = state.pool.begin().await?;
     let category = if let Some(id) = &input.category_id {
         if uuid::Uuid::parse_str(id).is_err() {

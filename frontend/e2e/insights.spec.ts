@@ -147,11 +147,13 @@ test('monthly category spending links to its records, including archived and unc
     (route) => route.fulfill({ status: 503, json: { error: 'Synthetic trend read failure' } }),
     { times: 1 },
   );
-  await trends.getByLabel('Trend range', { exact: true }).selectOption('12');
+  await trends.getByLabel('Trend category', { exact: true }).selectOption(ids[1]);
   await expect(trends).toContainText('Synthetic trend read failure');
   await expect(flow).toHaveCount(0);
   await trends.getByRole('button', { name: 'Retry trends', exact: true }).click();
   await expect(flow.getByRole('link', { name: /^Income, / })).toHaveCount(12);
+  await trends.getByLabel('Trend category', { exact: true }).selectOption(ids[0]);
+  await expect(categoryTrend).toContainText('Insights fixture 0');
   await categoryTrend.getByText('Exact figures: Insights fixture 0', { exact: true }).click();
   await expect(categoryTrend.getByRole('row').filter({ hasText: 'November 2026' })).toContainText(
     '€60.00',

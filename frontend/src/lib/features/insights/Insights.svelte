@@ -6,6 +6,7 @@
   import MonthlySummary from '../dashboard/MonthlySummary.svelte';
   import SpendingByCategory from '../dashboard/SpendingByCategory.svelte';
   import InsightTrends from './InsightTrends.svelte';
+  import ExpenseSplits from './ExpenseSplits.svelte';
   import type { ClassificationCatalog } from '../classification/types.ts';
 
   let {
@@ -47,6 +48,22 @@
   });
 </script>
 
+<label class="insights-year">
+  Overview year<input
+    type="number"
+    min="1"
+    max="9999"
+    value={Number(month.slice(0, 4))}
+    onchange={(event) => {
+      const year = Number(event.currentTarget.value);
+      if (Number.isInteger(year) && year >= 1 && year <= 9999)
+        month = `${String(year).padStart(4, '0')}${month.slice(4)}`;
+      else event.currentTarget.value = String(Number(month.slice(0, 4)));
+    }}
+  />
+</label>
+<InsightTrends {month} {refresh} {catalog} {onunauthorized} />
+<h2>Monthly overview</h2>
 <MonthPicker value={month} onchange={(value) => (month = value)} />
 {#if error}
   <p class="error" role="alert">
@@ -57,7 +74,12 @@
 {:else if data}
   <MonthlySummary month={data.month} totals={data.monthly} />
 {/if}
-<InsightTrends {month} {refresh} {catalog} {onunauthorized} />
+{#key month.slice(0, 4)}<ExpenseSplits
+    {month}
+    {refresh}
+    {onunauthorized}
+    colorKeys={['uncategorized', ...catalog.categories.map((c) => c.id).sort()]}
+  />{/key}
 {#if data && !loading && !error}
   <SpendingByCategory month={data.month} items={data.spending_categories} compact={false} />
   <p class="data-note">
@@ -66,3 +88,9 @@
     are rounded. Income is shown separately.
   </p>
 {/if}
+
+<style>
+  .insights-year {
+    max-width: 12rem;
+  }
+</style>

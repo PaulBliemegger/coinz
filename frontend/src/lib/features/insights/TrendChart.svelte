@@ -3,7 +3,7 @@
   import type { TrendMonth } from '#lib/api.ts';
   import { localDate, money, monthLabel } from '#lib/money.ts';
   import { monthEntriesPath } from '../dashboard/category-spending.ts';
-  import { barPercent, monthStatus } from './trend-display.ts';
+  import { barPercent, monthStatus, chartScale } from './trend-display.ts';
 
   let {
     months,
@@ -47,6 +47,7 @@
   function path(month: string, type: 'income' | 'spending') {
     return monthEntriesPath(month, type, mode === 'category' ? categoryId : undefined);
   }
+  let scale = $derived(chartScale(maximum));
 </script>
 
 <section class="trend-chart" aria-labelledby={`${id}-title`}>
@@ -61,35 +62,54 @@
         <span class="legend-swatch" class:income={s.type === 'income'} aria-hidden="true"
         ></span>{s.name}
       </span>{/each}
-    <span class="muted">Scale: €0–{money(maximum.toString())}</span>
+    <span class="muted">Scale: €0–{money(scale.top.toString())}</span>
   </div>
   {#if maximum > 0n}
-    <div class="trend-scroll" role="region" aria-label={`${title} chart; scroll for more months`}>
-      <div class="trend-columns" style:--month-count={months.length}>
-        {#each months as point (point.month)}
-          <div class="trend-month">
-            <div class="trend-bars">
-              {#each series as s (s.key)}
-                <a
-                  class="trend-bar-target"
-                  href={resolve(path(point.month, s.type))}
-                  aria-label={`${s.name}, ${mode === 'category' ? categoryName + ', ' : ''}${monthLabel(point.month)}: ${money(point[s.key])}${monthStatus(point.month, today) ? ', ' + monthStatus(point.month, today) : ''}. View entries.`}
-                  title={`${s.name}: ${money(point[s.key])}`}
-                >
-                  <span
-                    class="trend-bar"
-                    class:income={s.type === 'income'}
-                    class:nonzero={BigInt(point[s.key]) > 0n}
-                    style:height={`${barPercent(point[s.key], maximum)}%`}
-                    aria-hidden="true"
-                  ></span>
-                </a>
-              {/each}
+    <div class="trend-plot">
+      <div class="trend-axis" aria-hidden="true">
+        {#each [...scale.ticks].reverse() as tick (tick.toString())}<span
+            style:top={`${100 - barPercent(tick.toString(), scale.top)}%`}
+          >
+            {money(tick.toString())}
+          </span>{/each}
+      </div>
+      <div
+        class="trend-scroll"
+        style:--month-count={months.length}
+        role="region"
+        aria-label={`${title} chart; scroll for more months`}
+      >
+        <div class="trend-grid" aria-hidden="true">
+          {#each scale.ticks as tick (tick.toString())}<span
+              style:bottom={`${barPercent(tick.toString(), scale.top)}%`}
+            ></span>{/each}
+        </div>
+        <div class="trend-columns" style:--month-count={months.length}>
+          {#each months as point (point.month)}
+            <div class="trend-month">
+              <div class="trend-bars">
+                {#each series as s (s.key)}
+                  <a
+                    class="trend-bar-target"
+                    href={resolve(path(point.month, s.type))}
+                    aria-label={`${s.name}, ${mode === 'category' ? categoryName + ', ' : ''}${monthLabel(point.month)}: ${money(point[s.key])}${monthStatus(point.month, today) ? ', ' + monthStatus(point.month, today) : ''}. View entries.`}
+                    title={`${s.name}: ${money(point[s.key])}`}
+                  >
+                    <span
+                      class="trend-bar"
+                      class:income={s.type === 'income'}
+                      class:nonzero={BigInt(point[s.key]) > 0n}
+                      style:height={`${barPercent(point[s.key], scale.top)}%`}
+                      aria-hidden="true"
+                    ></span>
+                  </a>
+                {/each}
+              </div>
+              <span class="trend-month-name">{monthLabel(point.month)}</span>
+              <span class="trend-month-status">{monthStatus(point.month, today)}</span>
             </div>
-            <span class="trend-month-name">{monthLabel(point.month)}</span>
-            <span class="trend-month-status">{monthStatus(point.month, today)}</span>
-          </div>
-        {/each}
+          {/each}
+        </div>
       </div>
     </div>
   {:else}
@@ -154,9 +174,44 @@
     background: var(--status-ink);
   }
   .trend-scroll {
+    position: relative;
     overflow-x: auto;
-    padding: 0.5rem 0.2rem;
+    padding: 0 0.2rem 0.5rem;
     margin-top: 1rem;
+  }
+  .trend-plot {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr);
+    gap: 0.4rem;
+    margin-top: 1rem;
+  }
+  .trend-axis {
+    position: relative;
+    height: 190px;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    min-width: 0;
+  }
+  .trend-axis span {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+  .trend-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    min-width: calc(var(--month-count) * 6rem);
+    height: 190px;
+    pointer-events: none;
+  }
+  .trend-grid span {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-bottom: 1px solid var(--line);
   }
   .trend-columns {
     display: grid;

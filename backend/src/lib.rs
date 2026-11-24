@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod budgets;
 pub mod classification;
 pub mod classification_deletion;
 pub mod db;
@@ -109,7 +110,9 @@ pub async fn app(
         .route("/summary", get(ledger::summary))
         .route("/entries", get(reports::entries))
         .route("/dashboard", get(reports::dashboard))
+        .route("/budgets/{month}", get(budgets::get).put(budgets::save))
         .route("/insights/trends", get(reports::trends::get))
+        .route("/insights/split", get(reports::split::get))
         .route(
             "/imports/profiles",
             get(imports::profiles::list).post(imports::profiles::create),

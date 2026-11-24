@@ -14,7 +14,7 @@ uploading a file. Changes affect future imports only.
 Appearance follows the system by default, with Light/Dark overrides.
 
 Try **Import CSV** on Home, Entries, or Imports using [demo.csv](examples/imports/demo.csv).
-Create a fresh source and profile; map Date to `date`, Amount to `amount`, and
+Create a profile (Source is optional under import details); map Date to `date`, Amount to `amount`, and
 Description to `description`. Choose `external_id` for the optional ID mapping.
 Keep the default reading settings, name/save the profile, review the 106 synthetic
 entries, then import. Reuse that profile for subsequent example files. Choose
@@ -38,7 +38,7 @@ can accept suggestions or keep its own choices. Preview history explicitly befor
 applying a rule to existing entries. Category/label deletion previews affected
 entry/rule counts. See [local rules](docs/specs/labeling-rules.md).
 Bank-specific adapters, transfer/refund handling, YAML
-profiles and planning remain deferred. See [product scope](docs/product.md) for
+profiles and advanced planning remain deferred. See [product scope](docs/product.md) for
 sequencing and the
 [specification index](docs/specs/README.md) for detailed behavior and feature status.
 Bank balance tracking and reconciliation are outside the core scope.
@@ -49,18 +49,18 @@ spending entries. Entries groups **All / Expenses / Income**, searchable categor
 and label pickers, and removable active-filter chips together. Clear filters keeps
 the selected dates and description search.
 See [reporting](docs/specs/reporting.md#spending-by-category).
-The **Insights** tab shows the full monthly report plus six-/twelve-month income
-versus expenses and category spending charts. Bars link to their entries; exact
+The **Insights** tab shows the full monthly report plus annual income
+versus expenses and category spending charts, with monthly/average expense splits. Bars link to their entries; exact
 figures are available in tables. Home's **Explore insights** link carries over
 the selected month.
 
 ### Verification status
 
-Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 48
+Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 54
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
 startup because the agent sandbox denies local sockets; browser assertions and
 visual review remain unverified. An offline Chromium launch was also unavailable.
-The category/label, compact-filter, import-review, rule, and Insights navigation/report desktop/phone journeys
+The category/label, compact-filter, import-review, optional-source, budget, rule, and Insights navigation/report desktop/phone journeys
 are defined but could not run.
 See [agent test permissions](docs/agent-testing.md).
 The frontend checks ran with Node 26.13.1 and reported an engine warning;
@@ -141,6 +141,51 @@ Development without Docker uses a separate database under `data/`.
 To update after source changes, run `docker compose up -d --build`. Migrations run
 on startup. Before v1.0, schema compatibility across development changes is not
 guaranteed; take a backup before updating data you want to keep.
+
+## GitHub dev checks and images
+
+[The dev workflow](.github/workflows/dev.yml) runs `make check` for pull requests
+targeting `dev` and pushes to `dev`, using the pinned Rust/Node/pnpm versions and
+Chromium with its system dependencies. Failed browser journeys retain synthetic
+traces/screenshots as GitHub artifacts for seven days. Other branches and release
+tags do not publish images.
+
+After successful checks on a `dev` push, native GitHub-hosted x86 and ARM runners
+build `linux/amd64` and `linux/arm64` images. Each image must start against a fresh
+disposable database, serve the API and static UI, create a synthetic user, and
+restart successfully. The smoke test uses no network and cleans up its container
+and anonymous data volume. Both images must pass before the combined tags publish:
+
+- `ghcr.io/<owner>/<repository>:dev` follows the latest successful run.
+- `ghcr.io/<owner>/<repository>:sha-<full-commit-sha>` identifies the checked commit.
+
+Architecture-specific `sha-<full-commit-sha>-amd64`/`-arm64` tags are staging images;
+one can exist even if the other architecture fails. Use the combined image for
+deployment. The publish job summary includes its registry digest. Pin that digest
+for a reproducible deployment; tags can move when a workflow is rerun. No `latest`
+or release tag is published yet. Docker picks the matching architecture when
+pulling the combined image; the Pi needs a 64-bit OS for `linux/arm64`.
+
+The workflow publishes to GitHub Container Registry using its `GITHUB_TOKEN`,
+with package-write permission restricted to image jobs. Repository/organization
+policy must allow those permissions and the referenced actions. Existing packages
+must grant this repository Actions access. Package visibility is managed in
+GitHub; private images require separate read credentials on the deployment host.
+No Pi credentials or deployment network access belong in CI.
+
+Deployment remains an explicit owner action in the separate private runtime.
+Its Compose configuration should select `image: ghcr.io/<owner>/<repository>@sha256:<digest>`
+instead of building from source, retain its persistent `/data` volume, and set its
+actual HTTPS origin/secure-cookie settings as described below. CI neither updates
+the private instance nor reads its data. Use Glances and normal manual workflows
+for initial performance feedback; no load-test infrastructure is required.
+
+Workflow syntax and native/container test results must be distinguished from an
+actual GitHub run: runner availability, registry permissions, image pushes, and
+multi-platform assembly are verified only when the workflow runs there. Build
+durations appear in Actions; there is no measured build-time or Pi runtime budget
+yet. The first deployment is still pending export/reimport and private-runtime
+setup.
 
 ## Local development
 
@@ -282,3 +327,15 @@ instead of copying it into another guide.
 
 Update the affected specification and acceptance tests alongside behavior.
 Keep setup commands here and executable commands in the Makefile.
+
+### Monthly budgets
+
+Open **Budgets** for the **Saved plan vs actual** overview: planned, actual
+expenses and remaining per category. Choose **Edit monthly plan** to set targets,
+reserve savings and name expected income.
+Match recorded income to expectations to reduce the pending amount without
+counting it twice. A blank target is Not set; zero is an explicit target. Copy a
+previous plan to prepare another month; copying clears receipt links/completion.
+Save applies the draft. Figures use the saved plan and the visible Recorded through
+date, and describe monthly spending room rather than a bank balance. See
+[monthly budgets](docs/specs/planning.md). Existing data is preserved by migration.

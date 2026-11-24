@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { barPercent, monthStatus } from '../src/lib/features/insights/trend-display.ts';
+import { barPercent, monthStatus, chartScale } from '../src/lib/features/insights/trend-display.ts';
 import { monthEntriesPath } from '../src/lib/features/dashboard/category-spending.ts';
 
 test('chart scaling keeps large cents exact until converting a bounded visual ratio', () => {
@@ -20,4 +20,12 @@ test('income bars open income entries with correct leap-month scope and no categ
   assert.equal(url.searchParams.get('end'), '2024-02-29');
   assert.equal(url.searchParams.has('category_ids'), false);
   assert.equal(url.searchParams.has('uncategorized'), false);
+});
+
+test('euro ticks use small readable steps and keep large chart axes bounded', () => {
+  assert.deepEqual(chartScale(19000n), { top: 20000n, ticks: [0n, 5000n, 10000n, 15000n, 20000n] });
+  const scale = chartScale(250000n);
+  assert.equal(scale.top, 250000n);
+  assert.ok(scale.ticks.length <= 6);
+  assert.ok(chartScale(9223372036854775807n).top >= 9223372036854775807n);
 });
