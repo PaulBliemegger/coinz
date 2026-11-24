@@ -13,7 +13,7 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 | [Categories and labels](classification.md) | Core and import review implemented; browser verification blocked | Single category, optional labels, setup, management, bulk assignment, filters, import drafts and counted deletion; proposed insights |
 | [Local labeling rules](labeling-rules.md) | Implemented; browser verification blocked | Deterministic rules, suggestions, conflicts, historical previews and target lifecycle |
 | [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |
-| [Entry export and reimport](data-portability.md) | CSV and settings JSON implemented; settings browser verification pending | Per-user CSV snapshots, native import review and versioned setup restoration into empty accounts |
+| [Entry export and reimport](data-portability.md) | CSV and settings JSON implemented | Per-user CSV snapshots, native import review and versioned setup restoration into empty accounts |
 | [Monthly budgets](planning.md) | Implemented; browser verification blocked | Category targets, savings reservations, named expected income, receipt matching, copy and year context |
 
 Implemented means the behavior exists in source; it does not imply completed
@@ -23,7 +23,8 @@ future behavior, not capabilities of the running app.
 
 Richer insights remain proposed in the
 [categories and labels spec](classification.md). Account balances, reconciliation, and historical balance reconstruction
-are outside the core. Snapshot APIs/UI have been retired; legacy data remains stored.
+are outside the core. Snapshot APIs/UI and their storage are absent from the
+clean development baseline.
 
 ## Keeping specs useful
 

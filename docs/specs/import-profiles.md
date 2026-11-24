@@ -322,7 +322,7 @@ verification limits are listed below; all fixtures are wholly synthetic.
 
 ## Persistence and API
 
-Migration 0008 stores owned profile IDs, names, layouts and monotonically increasing
+The schema stores owned profile IDs, names, layouts and monotonically increasing
 revisions. Names are trimmed, 1–80 characters. Updating requires the current
 revision and preserves identity. No sample values belong to a profile. Each new
 batch and evidence row stores an immutable JSON layout snapshot; older evidence

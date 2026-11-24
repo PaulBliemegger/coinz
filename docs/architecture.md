@@ -103,14 +103,14 @@ scaffolding directories, generic utility collections, and required layers.
 - Imports reparse a bounded CSV for preview/commit, keeping preview stateless.
   Commit revalidates under `BEGIN IMMEDIATE` so repeated/concurrent submits are
   idempotent. Original file/record and source-scoped bank evidence live separately
-  from mutable transactions (migration 0004); raw uploads are not persisted.
-  Deletion clears linked evidence and permits reimport (migration 0006).
-  Owned reusable layouts and revisions (migration 0008) pin profile interpretation
+  from mutable transactions; raw uploads are not persisted.
+  Deletion clears linked evidence and permits reimport.
+  Owned reusable layouts and revisions pin profile interpretation
   at preview/commit. Commit checks the revision under the write lock and stores an
   immutable layout snapshot on the batch and original row evidence. Description
   and classification drafts affect new transactions only; original parsed fields continue to drive
   matching. Same-file reinterpretations that change original fields conflict.
-  Batch counts/member roles and transaction revisions (migration 0007) support
+  Batch counts/member roles and transaction revisions support
   removal with a review fingerprint rechecked under the write lock. Existing
   `added` versus `known`/`matched` roles express one creating batch without an
   additional ownership table. See [import history](specs/import-history.md) for
@@ -126,7 +126,7 @@ scaffolding directories, generic utility collections, and required layers.
   renaming/archive does not rewrite ledger entries. Filters use EXISTS rather than
   multiplicative joins, and entry classification is loaded inside report snapshots.
 - Local rules use owned normalized targets and a per-user ruleset revision
-  (migration 0010). Pure matching is separate from HTTP/storage. Import preview
+  in the schema. Pure matching is separate from HTTP/storage. Import preview
   carries that revision; commit rechecks it under the existing write lock before
   assigning suggestions. Explicit classification drafts override suggestions;
   conflicting categories require an explicit choice. Source restrictions are
@@ -135,10 +135,10 @@ scaffolding directories, generic utility collections, and required layers.
   classification deletion use fingerprints rechecked atomically. Archiving/deleting
   a target pauses dependent rules and invalidates stale rule previews. No external
   services, model runtime, or custom rule scripting language is needed.
-- Field-specific PATCH operations preserve unrelated entry edits. Migration 0005
-  stores explicit entry origin independently of editable source metadata.
-  Migration 0003 preserves former accounts as sources and retires balance tables;
-  the [ledger spec](specs/manual-ledger.md#preserved-legacy-data) owns those guarantees.
+- Field-specific PATCH operations preserve unrelated entry edits. Entry origin is
+  stored independently of editable source metadata. The clean schema contains
+  optional sources and no retired account/balance tables; see the
+  [ledger spec](specs/manual-ledger.md#schema-baseline).
 - The session shell coordinates shared entry/import actions and refreshes active
   feature reads after mutations. Feature components ignore superseded responses.
   Reporting uses checked integer totals in Rust and one read transaction per
@@ -159,8 +159,10 @@ scaffolding directories, generic utility collections, and required layers.
 - Password hashing uses Argon2id; `tower-sessions` and its SQLx SQLite store manage
   opaque sessions. No custom crypto or session-token implementation.
 - Migration SQL uses LF line endings, pinned by `.gitattributes`, because SQLx
-  checksums the exact file bytes. Applied migrations stay immutable; schema changes
-  use a new version. `backend/build.rs` tracks the migration directory so adding
+  checksums the exact file bytes. The pre-v0.1 history was deliberately squashed
+  into `0001_initial.sql`; earlier databases require an explicit owner reset.
+  Applied migrations stay immutable after this baseline; schema changes use a
+  new version. `backend/build.rs` tracks the migration directory so adding
   a file rebuilds the embedded migrator on stable Rust.
 - Migrations run on connection/startup. Expired session records are cleaned at app
   assembly; session loading enforces expiry. Additional cleanup can follow usage.
@@ -181,22 +183,22 @@ supersession; do not duplicate feature specifications or add records for routine
 implementation choices.
 
 Budget storage uses owned month revisions, optional category target rows and named
-expected income with unique per-owner receipt links (migration 0011). Saves validate
+expected income with unique per-owner receipt links. Saves validate
 the complete draft under the SQLite write lock. Receipt totals are read from the
 current ledger, with explicit calendar cutoffs; plans never create ledger entries.
 Category deletion includes affected budgets in its review fingerprint and advances
 plan revisions. Average report rounding is performed on the backend so category
 slices reconcile to the displayed average total.
 
-Migration 0012 permits null import sources, preserving evidence/history and their
-foreign keys. Import evidence uses an explicit non-null scope key for uniqueness
+Import sources are nullable, with evidence/history ownership enforced by foreign
+keys. Import evidence uses an explicit non-null scope key for uniqueness
 when source is null. Unspecified imports only auto-recognize exact file/row
 repeats; cross-file matches stay suggestions. Explicit sources retain stable-ID
 matching. No implicit source rows are created. Receipt link changes advance
 transaction edit revisions only when the association actually changes.
 
 Portable entry CSV uses the existing import parser/review/commit flow with an
-explicit native header. Migration 0013 stores per-owner entry/source reference
+explicit native header. The schema stores per-owner entry/source reference
 aliases separately from bank evidence, allowing fresh-install IDs without losing
 portable identity. Export reads all owned entries and classification in one
 snapshot. Native restoration resolves/creates names and sources under the import
@@ -206,7 +208,7 @@ remain unchanged; bounded native restore endpoints accept larger snapshots.
 
 Settings portability uses typed version-1 JSON and an empty-account restore guard,
 rechecked under `BEGIN IMMEDIATE`, avoiding speculative merge/overwrite semantics.
-All local relationship IDs are remapped to new owned IDs. Migration 0014 stages
+All local relationship IDs are remapped to new owned IDs. The schema stages
 expected-income portable receipt references until CSV restoration reconnects them
 inside its existing transaction. Outstanding receipts survive re-export and block
 budget edits; reports expose their count rather than presenting a complete restore.

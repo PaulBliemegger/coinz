@@ -56,15 +56,15 @@ the selected month.
 
 ### Verification status
 
-Verification snapshot (2026-11-24): the owner confirmed the previous full
-`make check` and all 42 desktop/phone browser journeys passed, followed by a
-successful GitHub run, and subsequently confirmed the CSV portability journeys
-passed. The settings JSON slice adds temporary-database round-trip/validation
-tests and two desktop/phone browser journeys. Formatting/lint, Clippy, all 59 Rust
-tests, frontend type checks, all 9 frontend unit-test files, and both production
-builds passed. The shared synthetic browser was reviewed at desktop
-and phone widths; upload/restore journeys still need an owner-run check. Agent-run
-Playwright cannot start its local server because this sandbox denies sockets.
+Verification snapshot (2026-11-24): the owner confirmed the previous full browser
+suite and the subsequent CSV/settings portability journeys passed. The clean schema
+baseline replaces the earlier upgrade history; temporary-database checks cover
+fresh startup, reopening, rejected incompatible histories and the existing feature
+suite, including settings/CSV round trips. Formatting/lint, Clippy, all 57 Rust
+tests, frontend type checks, all 9 frontend unit-test files and both production
+builds passed. `make check` reached Playwright, which could not start its local
+server because this sandbox denies sockets. Browser checks for this baseline
+remain for an owner-run local check or CI.
 See [agent test permissions](docs/agent-testing.md). The shared browser can be
 used only for the owner-authorized synthetic development session.
 
@@ -73,18 +73,34 @@ the supported project version remains Node 24.22.3. The current slice has not
 been verified in a deployed container or on the Pi. Private deployment remains
 an explicit owner action.
 
-### Migration checksum errors
+### Development schema baseline and reset
 
-`VersionMismatch(8)` means the embedded migration bytes differ from the checksum
-recorded when migration 8 was applied. A CRLF checkout of that migration can cause
-this even when the SQL text is unchanged. Migration files are pinned to LF; rebuild
-with `cargo build --locked`, then retry `make dev`. No database reset or checksum
-rewrite is needed for the original LF migration history.
+`backend/migrations/0001_initial.sql` is the clean pre-v0.1 schema baseline.
+The earlier 14-migration development history is no longer supported. New databases
+start directly with the active schema; retired opening-balance/snapshot tables
+are omitted. Future schema changes use new numbered migrations.
 
-If the error persists, stop and identify the exact migration source originally
-used for that database. Preserve the database and its migration metadata; do not
-delete migration rows or bypass checksum validation. Development agents must not
-inspect a personal database to investigate this.
+An existing database from the earlier history will fail migration validation.
+Startup never deletes data or rewrites migration checksums. For disposable local
+development data using the default `data` directory, stop `make dev` with Ctrl-C,
+then run from the repository root:
+
+```sh
+rm -f -- data/coinz.sqlite3 data/coinz.sqlite3-wal data/coinz.sqlite3-shm
+cargo run --locked -- create-user wabo
+make dev
+```
+
+This deliberately removes all local users, sessions and financial/setup data;
+choose your username when recreating the account. If you set `COINZ_DATA_DIR`,
+use that directory instead of `data`. No export or restoration is needed for
+disposable fixtures; import the synthetic demo again if desired.
+
+When keeping data across a future deliberate development reset, use the
+[settings JSON and entry CSV workflow](docs/specs/data-portability.md).
+A checksum error on a database already using this baseline can also indicate
+modified migration bytes: keep SQL files at LF and rebuild before diagnosing it.
+Do not bypass checksum validation or delete migration metadata.
 
 ## Real data privacy
 
@@ -388,4 +404,4 @@ counting it twice. A blank target is Not set; zero is an explicit target. Copy a
 previous plan to prepare another month; copying clears receipt links/completion.
 Save applies the draft. Figures use the saved plan and the visible Recorded through
 date, and describe monthly spending room rather than a bank balance. See
-[monthly budgets](docs/specs/planning.md). Existing data is preserved by migration.
+[monthly budgets](docs/specs/planning.md).

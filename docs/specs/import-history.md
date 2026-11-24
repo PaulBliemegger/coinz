@@ -1,6 +1,6 @@
 # Import history and removal
 
-Status: implemented for commits made after migration 0007. Browser verification
+Status: implemented for committed imports. Browser verification
 status is recorded in the README. [CSV import](csv-import.md) owns parsing,
 matching, and duplicate semantics.
 

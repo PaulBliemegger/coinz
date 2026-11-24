@@ -470,99 +470,6 @@ async fn invalid_inputs_and_retired_balance_routes_do_not_mutate_data() {
     );
 }
 
-#[tokio::test]
-async fn migration_preserves_sources_entries_and_retired_balance_records() {
-    let directory = tempfile::tempdir().unwrap();
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(
-            sqlx::sqlite::SqliteConnectOptions::new()
-                .filename(directory.path().join("synthetic.sqlite3"))
-                .create_if_missing(true)
-                .foreign_keys(true),
-        )
-        .await
-        .unwrap();
-    sqlx::raw_sql(include_str!("../migrations/0001_ledger.sql"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query(
-        "INSERT INTO users(id,username,password_hash) VALUES('u','synthetic','not-a-login-hash')",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query("INSERT INTO accounts(id,user_id,name,opening_date,opening_cents) VALUES('a','u','Synthetic N26','2026-11-01',100000)").execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO transactions(id,user_id,account_id,date,description,amount_cents) VALUES('t','u','a','2026-11-03','Synthetic',-1234)").execute(&pool).await.unwrap();
-    sqlx::raw_sql(include_str!("../migrations/0002_balance_snapshots.sql"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("INSERT INTO balance_snapshots(id,account_id,user_id,as_of_date,balance_cents) VALUES('s','a','u','2026-11-03',98766)").execute(&pool).await.unwrap();
-    let mut tx = pool.begin().await.unwrap();
-    sqlx::raw_sql(include_str!(
-        "../migrations/0003_optional_transaction_sources.sql"
-    ))
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT name FROM transaction_sources WHERE id='a'")
-            .fetch_one(&pool)
-            .await
-            .unwrap(),
-        "Synthetic N26"
-    );
-    let row: (i64, String, String) = sqlx::query_as(
-        "SELECT amount_cents, source_id, description FROM transactions WHERE id='t'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(row, (-1234, "a".into(), "Synthetic".into()));
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT balance_cents FROM balance_snapshots WHERE id='s'")
-            .fetch_one(&pool)
-            .await
-            .unwrap(),
-        98766
-    );
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>(
-            "SELECT opening_cents FROM legacy_opening_balances WHERE account_id='a'"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap(),
-        100000
-    );
-    sqlx::query("INSERT INTO transactions(id,user_id,date,description,amount_cents) VALUES('m','u','2026-11-04','Manual',-100)").execute(&pool).await.unwrap();
-    assert!(
-        sqlx::query("PRAGMA foreign_key_check")
-            .fetch_all(&pool)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    sqlx::raw_sql(include_str!("../migrations/0004_import_records.sql"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::raw_sql(include_str!("../migrations/0005_transaction_origin.sql"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM transactions WHERE origin='unknown'")
-            .fetch_one(&pool)
-            .await
-            .unwrap(),
-        2
-    );
-}
-
 const SMALL_IMPORT_CSV: &str = include_str!("fixtures/import-regression.csv");
 const SMALL_OVERLAP_CSV: &str = include_str!("fixtures/import-regression-overlap.csv");
 
@@ -1465,7 +1372,7 @@ async fn inline_fields_provenance_and_bulk_deletion_enforce_ownership_and_atomic
 }
 
 #[tokio::test]
-async fn deleting_all_imported_entries_allows_full_reimport_and_migration_clears_old_tombstones() {
+async fn deleting_all_imported_entries_allows_full_reimport() {
     let h = Harness::new().await;
     let mut alice = h.client("alice").await;
     let source = alice.source("Synthetic reimport").await;
@@ -1485,34 +1392,6 @@ async fn deleting_all_imported_entries_allows_full_reimport_and_migration_clears
             .0,
         StatusCode::NO_CONTENT
     );
-    assert_eq!(
-        import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await["added"],
-        16
-    );
-    // Recreate the old deletion behavior in this wholly synthetic temporary database.
-    sqlx::query("DROP TRIGGER forget_deleted_import_evidence")
-        .execute(&h.pool)
-        .await
-        .unwrap();
-    sqlx::query("DELETE FROM transactions")
-        .execute(&h.pool)
-        .await
-        .unwrap();
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM import_records WHERE transaction_id IS NULL"
-        )
-        .fetch_one(&h.pool)
-        .await
-        .unwrap(),
-        16
-    );
-    sqlx::raw_sql(include_str!(
-        "../migrations/0006_reimport_deleted_entries.sql"
-    ))
-    .execute(&h.pool)
-    .await
-    .unwrap();
     assert_eq!(
         import_ok(&mut alice, &source, SMALL_IMPORT_CSV, json!([])).await["added"],
         16

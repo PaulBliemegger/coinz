@@ -28,9 +28,10 @@ The [design philosophy](design.md) guides the implemented visual hierarchy,
 selected-row import review, direct editing, and contextual bulk actions. Detailed
 behavior lives in the feature specs.
 
-The account/snapshot interface and API are retired. Existing account identities
-become transaction sources; old opening amounts and snapshots are preserved as
-inactive legacy records. See the [manual-ledger spec](specs/manual-ledger.md).
+The account/snapshot interface and API are retired. The clean development schema
+contains optional transaction sources and omits retired balance records. Earlier
+databases require an explicit reset; there is no upgrade from the old history.
+See the [manual-ledger spec](specs/manual-ledger.md).
 Bank-specific import adapters,
 and richer insights are not yet implemented. The
 [example importer](specs/csv-import.md) provides a synthetic workflow for testing
