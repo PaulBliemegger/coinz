@@ -14,17 +14,18 @@
     catalog: ClassificationCatalog;
     onunauthorized: () => void;
   } = $props();
-  let range = $state('6');
+  const formId = $props.id();
   let categoryId = $state('');
   let data = $state<InsightTrends | null>(null);
   let loading = $state(true);
   let error = $state('');
   let retry = $state(0);
+  let year = $derived(month.slice(0, 4));
   $effect(() => {
     if (categoryId && !catalog.categories.some((c) => c.id === categoryId)) categoryId = '';
   });
   $effect(() => {
-    const params = new SvelteURLSearchParams({ month, months: range });
+    const params = new SvelteURLSearchParams({ year });
     if (categoryId) params.set('category_id', categoryId);
     void refresh;
     void retry;
@@ -52,12 +53,10 @@
 <section class="insight-trends" aria-label="Monthly trends">
   <div class="trend-controls">
     <label>
-      Trend range<select bind:value={range}>
-        <option value="6">6 months</option><option value="12">12 months</option>
-      </select>
-    </label>
-    <label>
-      Trend category<select bind:value={categoryId}>
+      <span id={`${formId}-category`}>Trend category</span><select
+        aria-labelledby={`${formId}-category`}
+        bind:value={categoryId}
+      >
         <option value="">Uncategorized</option>
         {#each catalog.categories as category (category.id)}<option value={category.id}>
             {category.name}{category.archived ? ' · Archived' : ''}
@@ -66,7 +65,7 @@
     </label>
   </div>
   <p class="muted trend-scope">
-    Rolling months ending in the selected month. In-progress and future months include all recorded
+    January–December {month.slice(0, 4)}. In-progress and future months include all recorded
     entries, including future-dated records. Empty months may mean missing history; these are not
     forecasts.
   </p>

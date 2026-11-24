@@ -30,6 +30,7 @@
     onbusy?: (busy: boolean) => void;
     onunauthorized?: () => void;
   } = $props();
+  const formId = $props.id();
   let name = $state('');
   let pattern = $state('');
   let operator = $state<RuleOperator>('contains');
@@ -107,7 +108,11 @@
       <legend>When</legend>
       <div class="rule-condition">
         <span>Description</span><label>
-          <span class="sr-only">Match condition</span><select bind:value={operator} disabled={busy}>
+          <span id={`${formId}-condition`} class="sr-only">Match condition</span><select
+            aria-labelledby={`${formId}-condition`}
+            bind:value={operator}
+            disabled={busy}
+          >
             {#each Object.entries(operatorNames) as [value, label] (value)}<option {value}>
                 {label}
               </option>{/each}
@@ -124,7 +129,11 @@
     </fieldset>
     <fieldset>
       <legend>Then</legend><label>
-        Set category<select bind:value={categoryId} disabled={busy}>
+        <span id={`${formId}-category`}>Set category</span><select
+          aria-labelledby={`${formId}-category`}
+          bind:value={categoryId}
+          disabled={busy}
+        >
           <option value="">
             Leave category unchanged
           </option>{#each catalog.categories.filter((c) => !c.archived || c.id === categoryId) as item (item.id)}<option
@@ -152,7 +161,11 @@
     </fieldset>
     <details>
       <summary>Advanced · optional source restriction</summary><label>
-        Applies to<select bind:value={sourceId} disabled={busy}>
+        <span id={`${formId}-source`}>Applies to</span><select
+          aria-labelledby={`${formId}-source`}
+          bind:value={sourceId}
+          disabled={busy}
+        >
           <option value="">
             All sources and manual entries
           </option>{#each sources as source (source.id)}<option value={source.id}>

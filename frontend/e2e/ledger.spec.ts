@@ -70,6 +70,7 @@ async function reviewExample(dialog: Locator) {
 async function importFile(page: Page, name: string, csv: string, sourceName: string) {
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByRole('button', { name: '+ New source', exact: true }).click();
   await dialog.getByLabel('New source name').fill(sourceName);
   await dialog.getByRole('button', { name: 'Create import source', exact: true }).click();
@@ -112,7 +113,10 @@ test('dashboard, entry workspace, exact totals, editing, filters, theme and logo
   await page
     .getByRole('button', { name: 'Change amount: A very precise lunch', exact: true })
     .click();
-  await page.getByLabel('Amount', { exact: true }).fill('13.34');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Amount', { exact: true })
+    .fill('13.34');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('spending')).toHaveText('€13.34');
   await expect(
@@ -121,7 +125,10 @@ test('dashboard, entry workspace, exact totals, editing, filters, theme and logo
   await page
     .getByRole('button', { name: 'Change date: A very precise lunch', exact: true })
     .click();
-  await page.getByLabel('Date', { exact: true }).fill('2026-11-04');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Date', { exact: true })
+    .fill('2026-11-04');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Change date: A very precise lunch', exact: true }),
@@ -244,7 +251,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   let dialog = await importFile(page, filename, csv, `History ${info.project.name}`);
   await expect(dialog.getByRole('heading', { name: 'Review 32 entries' })).toBeVisible();
   const importRow = dialog.locator('.review-row').filter({
-    has: dialog.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
+    has: page.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
   });
   const include = importRow.getByRole('checkbox', {
     name: 'Include Demo purchase 00',
@@ -278,12 +285,18 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await page
     .getByRole('button', { name: 'Change description: Demo purchase 31', exact: true })
     .click();
-  await page.getByLabel('Description', { exact: true }).fill('Edited purchase');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Description', { exact: true })
+    .fill('Edited purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page
     .getByRole('button', { name: 'Change description: Demo purchase 29', exact: true })
     .click();
-  await page.getByLabel('Description', { exact: true }).fill('Other edited purchase');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Description', { exact: true })
+    .fill('Other edited purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('link', { name: 'Imports', exact: true }).click();
   await page.getByRole('button', { name: `Review ${filename}`, exact: true }).click();
@@ -327,7 +340,9 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await page.getByRole('button', { name: 'Confirm removal', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('31 imported entries removed');
+  await expect(
+    page.getByRole('status').filter({ hasText: /^31 imported entries removed\./ }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove 0 entries', exact: true })).toBeDisabled();
   await page
     .locator('details')
@@ -337,10 +352,13 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await otherEdited.check();
   await page.getByRole('button', { name: 'Remove 1 entries', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm removal', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('1 imported entries removed');
+  await expect(
+    page.getByRole('status').filter({ hasText: /^1 imported entries removed\./ }),
+  ).toBeVisible();
   // Deletion releases all evidence so the file can be imported again.
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByLabel('Import source').selectOption({ label: `History ${info.project.name}` });
   await dialog
     .getByLabel('CSV file')
@@ -355,6 +373,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await expect(dialog).not.toBeVisible();
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByLabel('Import source').selectOption({ label: `History ${info.project.name}` });
   await dialog
     .getByLabel('CSV file')
@@ -366,7 +385,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await expect(dialog.getByText('1 already imported · excluded', { exact: true })).toBeVisible();
   await dialog.getByText('1 already imported · excluded', { exact: true }).click();
   const knownRow = dialog.locator('.review-row').filter({
-    has: dialog.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
+    has: page.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
   });
   await expect(knownRow.getByRole('checkbox')).toBeDisabled();
   await knownRow.getByRole('heading', { name: 'Demo purchase 00', exact: true }).click();
@@ -494,7 +513,9 @@ test('overlapping imports retain one creator and disclose cross-import removals'
   await page.getByRole('button', { name: 'Remove 2 entries', exact: true }).click();
   await page.screenshot({ path: info.outputPath('overlap-removal.png'), fullPage: true });
   await page.getByRole('button', { name: 'Confirm removal', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('2 imported entries removed');
+  await expect(
+    page.getByRole('status').filter({ hasText: /^2 imported entries removed\./ }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '← All imports', exact: true }).click();
   await page.getByRole('button', { name: `Review ${second}`, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove 1 entries', exact: true })).toBeEnabled();
@@ -559,7 +580,10 @@ test('saving an entry outside its search results focuses the workspace heading',
   await page
     .getByRole('button', { name: 'Change description: Focus fixture', exact: true })
     .click();
-  await page.getByLabel('Description', { exact: true }).fill('Renamed fixture');
+  await page
+    .getByRole('list', { name: 'Recorded entries' })
+    .getByLabel('Description', { exact: true })
+    .fill('Renamed fixture');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Entries workspace', exact: true })).toBeFocused();
 });
@@ -571,6 +595,7 @@ test('guided profile mapping, draft descriptions, reuse and original evidence', 
   await clean(page);
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByRole('button', { name: '+ New source', exact: true }).click();
   const source = `Profile stream ${info.project.name}`;
   await dialog.getByLabel('New source name').fill(source);
@@ -639,6 +664,7 @@ test('guided profile mapping, draft descriptions, reuse and original evidence', 
   await expect(dialog).not.toBeVisible();
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
+  await dialog.getByText('Optional source', { exact: true }).click();
   await dialog.getByLabel('Import source', { exact: true }).selectOption({ label: source });
   await dialog.getByLabel('CSV file').setInputFiles(upload);
   await expect(dialog.getByLabel('Import profile', { exact: true })).toBeEnabled();

@@ -180,7 +180,9 @@ from the existing file-free profile editor in Imports.
 - Keep the CSV table connected with vertical column borders. Available headings
   show **Do I describe Date/Amount/Description?** for the active field, without
   separate button boxes or pulsing. Hovering or focusing a heading highlights its
-  whole column; native keyboard focus remains visible.
+  whole column; native keyboard focus remains visible. On phones, keep these
+  interactive headers visible and clickable inside the horizontally scrollable
+  sample table; do not transform the sample into headerless cards.
 - Allow direct remapping by activating any of the three field controls. After all
   mappings are complete, show that state rather than silently assigning another
   field when a header is clicked.

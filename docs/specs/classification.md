@@ -180,7 +180,7 @@ All routes require session ownership; writes also require CSRF/Origin checks.
 - `POST /api/classification`: `{ kind: "category" | "label", name, color }`;
   returns 201 with `id`.
 - `PUT /api/classification/{id}`: `{ name, color, archived }`; returns 204.
-- `GET /api/classification/{id}/deletion-preview`: `{ entry_count, rule_count, token }`.
+- `GET /api/classification/{id}/deletion-preview`: `{ entry_count, rule_count, budget_month_count, token }`.
   `DELETE /api/classification/{id}` requires `{ token }`, returning 204 after a
   fresh owned review. Foreign/missing items return 404; stale review returns 422.
 - `POST /api/classification/setup`: `{ categories: string[], labels: string[] }`,
@@ -247,3 +247,8 @@ Home's [category spending breakdown](reporting.md#spending-by-category) is imple
 Category income breakdowns, period comparisons, and label analysis remain
 proposed. All figures should link to their underlying entries. Split allocations
 are separate later work and must sum exactly to the entry amount.
+
+Physical deletion also previews affected monthly category-budget targets. The
+[budget spec](planning.md#editing-copying-and-category-lifecycle) defines their
+removal, stale-review protection and plan revision changes; archiving preserves
+existing targets.

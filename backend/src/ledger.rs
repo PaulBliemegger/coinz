@@ -366,7 +366,7 @@ pub async fn provenance(
     if !owned {
         return Err(AppError::not_found());
     }
-    let rows = sqlx::query_as::<_,Provenance>("SELECT s.name AS source_name,r.record_number,r.date,r.description,CAST(r.amount_cents AS TEXT) AS amount_cents FROM import_records r JOIN transaction_sources s ON s.id=r.source_id AND s.user_id=r.user_id WHERE r.user_id=? AND r.transaction_id=? AND r.disposition='accepted' ORDER BY r.created_at,r.file_hash,r.record_number LIMIT 20")
+    let rows = sqlx::query_as::<_,Provenance>("SELECT COALESCE(s.name,'Not specified') AS source_name,r.record_number,r.date,r.description,CAST(r.amount_cents AS TEXT) AS amount_cents FROM import_records r LEFT JOIN transaction_sources s ON s.id=r.source_id AND s.user_id=r.user_id WHERE r.user_id=? AND r.transaction_id=? AND r.disposition='accepted' ORDER BY r.created_at,r.file_hash,r.record_number LIMIT 20")
         .bind(&user.id).bind(id).fetch_all(&state.pool).await?;
     Ok(Json(rows))
 }

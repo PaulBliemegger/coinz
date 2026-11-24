@@ -13,6 +13,7 @@
     oncancel: () => void;
     onunauthorized: () => void;
   } = $props();
+  const formId = $props.id();
   const original = untrack(() => profile);
   let name = $state(original?.name ?? '');
   let layout = $state<ImportLayout>(
@@ -88,9 +89,13 @@
       <label>Date column<input bind:value={layout.date} required maxlength="200" /></label>
       <label>Amount column<input bind:value={layout.amount} required maxlength="200" /></label>
       <label>
-        Description column<input bind:value={layout.description} required maxlength="200" /><span
-          class="muted"
-        >
+        <span id={`${formId}-description`}>Description column</span><input
+          aria-labelledby={`${formId}-description`}
+          aria-describedby={`${formId}-description-hint`}
+          bind:value={layout.description}
+          required
+          maxlength="200"
+        /><span id={`${formId}-description-hint`} class="muted">
           A name, counterparty or reference column is suitable.
         </span>
       </label>
@@ -105,22 +110,34 @@
     </p>
     <div class="profile-fields">
       <label>
-        Delimiter<select bind:value={layout.delimiter}>
+        <span id={`${formId}-delimiter`}>Delimiter</span><select
+          aria-labelledby={`${formId}-delimiter`}
+          bind:value={layout.delimiter}
+        >
           <option value=",">Comma</option><option value=";">Semicolon</option>
         </select>
       </label>
       <label>
-        Date format<select bind:value={layout.date_format}>
+        <span id={`${formId}-date-format`}>Date format</span><select
+          aria-labelledby={`${formId}-date-format`}
+          bind:value={layout.date_format}
+        >
           <option>YYYY-MM-DD</option><option>DD.MM.YYYY</option><option>DD/MM/YYYY</option>
         </select>
       </label>
       <label>
-        Decimal separator<select bind:value={layout.decimal}>
+        <span id={`${formId}-decimal`}>Decimal separator</span><select
+          aria-labelledby={`${formId}-decimal`}
+          bind:value={layout.decimal}
+        >
           <option value=".">Dot</option><option value=",">Comma</option>
         </select>
       </label>
       <label>
-        Grouping separator<select bind:value={layout.grouping}>
+        <span id={`${formId}-grouping`}>Grouping separator</span><select
+          aria-labelledby={`${formId}-grouping`}
+          bind:value={layout.grouping}
+        >
           <option value="">None</option><option value=".">Dot</option><option value=",">
             Comma
           </option><option value=" ">Space</option>
@@ -176,7 +193,7 @@
     gap: 1rem;
     align-items: start;
   }
-  label > span {
+  label > .muted {
     font-size: 0.875rem;
     font-weight: 400;
   }

@@ -28,7 +28,7 @@ test('monthly category spending links to its records, including archived and unc
       headers: { 'X-CSRF-Token': token },
       data,
     });
-    expect(response.ok()).toBeTruthy();
+    expect(response.ok(), `${path}: ${response.status()} ${await response.text()}`).toBeTruthy();
     return response.status() === 204 ? undefined : response.json();
   }
   // The native test server owns only fresh temporary synthetic data.
@@ -59,11 +59,6 @@ test('monthly category spending links to its records, including archived and unc
       category_id: category.id,
     });
   }
-  const archived = await page.request.put(`/api/classification/${ids[0]}`, {
-    headers: { 'X-CSRF-Token': token },
-    data: { name: 'Insights fixture 0', color: 'sage', archived: true },
-  });
-  expect(archived.ok()).toBeTruthy();
   await post('/transactions', {
     date: '2026-11-01',
     description: 'Insights unclassified',
@@ -81,6 +76,11 @@ test('monthly category spending links to its records, including archived and unc
     action: 'set_category',
     category_id: ids[0],
   });
+  const archived = await page.request.put(`/api/classification/${ids[0]}`, {
+    headers: { 'X-CSRF-Token': token },
+    data: { name: 'Insights fixture 0', color: 'sage', archived: true },
+  });
+  expect(archived.ok()).toBeTruthy();
   await post('/transactions', {
     date: '2026-12-01',
     description: 'Insights following month',
@@ -147,11 +147,13 @@ test('monthly category spending links to its records, including archived and unc
     (route) => route.fulfill({ status: 503, json: { error: 'Synthetic trend read failure' } }),
     { times: 1 },
   );
-  await trends.getByLabel('Trend range', { exact: true }).selectOption('12');
+  await trends.getByLabel('Trend category', { exact: true }).selectOption(ids[1]);
   await expect(trends).toContainText('Synthetic trend read failure');
   await expect(flow).toHaveCount(0);
   await trends.getByRole('button', { name: 'Retry trends', exact: true }).click();
   await expect(flow.getByRole('link', { name: /^Income, / })).toHaveCount(12);
+  await trends.getByLabel('Trend category', { exact: true }).selectOption(ids[0]);
+  await expect(categoryTrend).toContainText('Insights fixture 0');
   await categoryTrend.getByText('Exact figures: Insights fixture 0', { exact: true }).click();
   await expect(categoryTrend.getByRole('row').filter({ hasText: 'November 2026' })).toContainText(
     '€60.00',

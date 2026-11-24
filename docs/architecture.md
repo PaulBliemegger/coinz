@@ -36,7 +36,9 @@ backend/
     ledger.rs             Optional sources, entry writes and legacy monthly reads
     reports.rs            Paginated entry queries and dashboard read snapshots
     reports/category_spending.rs  Exact monthly spending buckets and shares
-    reports/trends.rs      Owned rolling monthly income/expense and category series
+    reports/trends.rs      Owned annual and rolling income/expense/category series
+    reports/split.rs       Selected-month expense distributions and balanced averages
+    budgets/              Monthly plans, validated income receipts and exact reports
     classification.rs     Owned categories/labels, setup and atomic assignments
     classification_deletion.rs  Counted deletion with stale-review protection
     rules/                Deterministic matching, owned rules and history application
@@ -162,7 +164,12 @@ scaffolding directories, generic utility collections, and required layers.
 - Migrations run on connection/startup. Expired session records are cleaned at app
   assembly; session loading enforces expiry. Additional cleanup can follow usage.
 - Tests use synthetic data and temporary databases. Full checks run through
-  `make check`; CI should reuse those commands when added.
+  `make check`, including in GitHub Actions for pull requests to `dev`/`main` and
+  pushes to either branch. Only successful `dev` pushes build and smoke-test
+  native amd64/arm64 container images before publishing their combined manifest
+  to GHCR. CI delivers images;
+  the owner explicitly deploys a selected digest to the isolated private runtime.
+  Setup and workflow verification limits live in the README.
 
 ## Decision records
 
@@ -171,3 +178,18 @@ an important tradeoff needs a longer durable explanation (for example changing
 storage or adding synchronization). Record context, choice, consequences, and
 supersession; do not duplicate feature specifications or add records for routine
 implementation choices.
+
+Budget storage uses owned month revisions, optional category target rows and named
+expected income with unique per-owner receipt links (migration 0011). Saves validate
+the complete draft under the SQLite write lock. Receipt totals are read from the
+current ledger, with explicit calendar cutoffs; plans never create ledger entries.
+Category deletion includes affected budgets in its review fingerprint and advances
+plan revisions. Average report rounding is performed on the backend so category
+slices reconcile to the displayed average total.
+
+Migration 0012 permits null import sources, preserving evidence/history and their
+foreign keys. Import evidence uses an explicit non-null scope key for uniqueness
+when source is null. Unspecified imports only auto-recognize exact file/row
+repeats; cross-file matches stay suggestions. Explicit sources retain stable-ID
+matching. No implicit source rows are created. Receipt link changes advance
+transaction edit revisions only when the association actually changes.

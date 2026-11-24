@@ -22,6 +22,7 @@
     onchanged: (notice: string) => Promise<void>;
     onunauthorized?: () => void;
   } = $props();
+  const formId = $props.id();
   let kind = $state<ClassificationKind>('category');
   let showDefaults = $state(false);
   let showRules = $state(false);
@@ -29,6 +30,7 @@
     item: ClassificationItem;
     entry_count: number;
     rule_count: number;
+    budget_month_count: number;
     token: string;
   } | null>(null);
   let includeArchived = $state(false);
@@ -109,9 +111,12 @@
     try {
       deletion = {
         item,
-        ...(await api<{ entry_count: number; rule_count: number; token: string }>(
-          `/classification/${item.id}/deletion-preview`,
-        )),
+        ...(await api<{
+          entry_count: number;
+          rule_count: number;
+          budget_month_count: number;
+          token: string;
+        }>(`/classification/${item.id}/deletion-preview`)),
       };
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) onunauthorized();
@@ -275,7 +280,11 @@
         />
       </label>
       {#if kind === 'label'}<label>
-          Colour<select bind:value={color} disabled={busy}>
+          <span id={`${formId}-colour`}>Colour</span><select
+            aria-labelledby={`${formId}-colour`}
+            bind:value={color}
+            disabled={busy}
+          >
             {#each labelColors as c (c)}<option value={c}>{c}</option>{/each}
           </select>
         </label>{/if}
@@ -324,7 +333,8 @@
                   ? 'These entries will become Uncategorized.'
                   : 'This label will be removed from those entries.'} Amounts and other labels stay unchanged.
                 {deletion.rule_count} affected rules will be paused and their deleted target removed.
-                This cannot be undone.
+                {#if deletion.budget_month_count}{deletion.budget_month_count} monthly budget targets
+                  will be removed. Archive instead to preserve them.{/if} This cannot be undone.
               </p>
               <div class="classification-actions">
                 <button class="button destructive" disabled={busy} onclick={deleteItem}>

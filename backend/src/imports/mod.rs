@@ -19,7 +19,7 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
-    source_id: String,
+    source_id: Option<String>,
     profile_id: Option<String>,
     profile_revision: Option<i64>,
     layout: Option<profiles::Layout>,
@@ -112,7 +112,9 @@ async fn classify(
     hash: &str,
     rows: Vec<Row>,
 ) -> Result<Preview> {
-    owned_source(conn, user, &input.source_id).await?;
+    if let Some(source) = &input.source_id {
+        owned_source(conn, user, source).await?;
+    }
     let rules = crate::rules::snapshot(conn, user).await?;
     // Inspect the whole file so ID-less rows also see stable-ID counterparts later on.
     let fields_with_ids: HashSet<_> = rows
@@ -130,7 +132,7 @@ async fn classify(
         let fields = (row.date.clone(), row.description.clone(), row.cents);
         let matches_identified_row = fields_with_ids.contains(&fields);
         let repeated_fields = !seen_fields.insert(fields);
-        let repeated_file = sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND file_hash=? AND record_number=?")
+        let repeated_file = sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND file_hash=? AND record_number=?")
             .bind(user).bind(&input.source_id).bind(hash).bind(row.record as i64).fetch_optional(&mut *conn).await?;
         if row.error.is_some() {
             status = "invalid";
@@ -145,12 +147,16 @@ async fn classify(
                 "conflict"
             };
         } else if repeated_id {
-            status = "conflict";
+            status = if input.source_id.is_some() {
+                "conflict"
+            } else {
+                "review"
+            };
         } else {
-            let evidence = if row.external_id.is_empty() {
+            let evidence = if row.external_id.is_empty() || input.source_id.is_none() {
                 None
             } else {
-                sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND external_id=? AND disposition='accepted' LIMIT 1")
+                sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND external_id=? AND disposition='accepted' LIMIT 1")
                     .bind(user).bind(&input.source_id).bind(&row.external_id).fetch_optional(&mut *conn).await?
             };
             if let Some(original) = evidence {
@@ -167,15 +173,15 @@ async fn classify(
                 // ID-less overlaps are suggestions only, including original edited fields.
                 candidates = sqlx::query_as::<_, Candidate>(
                     "SELECT t.id,t.date,t.description,CAST(t.amount_cents AS TEXT) AS amount_cents FROM transactions t
-                     WHERE t.user_id=? AND (t.source_id=? OR t.source_id IS NULL OR EXISTS(
-                       SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.source_id=? AND r.transaction_id=t.id AND r.disposition='accepted'))
+                     WHERE t.user_id=? AND (? IS NULL OR t.source_id IS ? OR t.source_id IS NULL OR EXISTS(
+                       SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.source_id IS ? AND r.transaction_id=t.id AND r.disposition='accepted'))
                      AND ((t.date=? AND t.description=? AND t.amount_cents=?) OR EXISTS(
-                       SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.source_id=? AND r.transaction_id=t.id AND r.disposition='accepted' AND r.date=? AND r.description=? AND r.amount_cents=?))
-                     AND (?='' OR NOT EXISTS(SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.source_id=? AND r.transaction_id=t.id AND r.external_id<>'' AND r.disposition='accepted'))
+                       SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.source_id IS ? AND r.transaction_id=t.id AND r.disposition='accepted' AND r.date=? AND r.description=? AND r.amount_cents=?))
+                     AND (?='' OR NOT EXISTS(SELECT 1 FROM import_records r WHERE r.user_id=t.user_id AND r.source_id IS ? AND r.transaction_id=t.id AND r.external_id<>'' AND r.disposition='accepted'))
                      ORDER BY t.id LIMIT 20")
-                    .bind(user).bind(&input.source_id).bind(&input.source_id).bind(&row.date).bind(&row.description).bind(row.cents)
+                    .bind(user).bind(&input.source_id).bind(&input.source_id).bind(&input.source_id).bind(&row.date).bind(&row.description).bind(row.cents)
                     .bind(&input.source_id).bind(&row.date).bind(&row.description).bind(row.cents)
-                    .bind(&row.external_id).bind(&input.source_id).fetch_all(&mut *conn).await?;
+                    .bind(if input.source_id.is_none(){""}else{&row.external_id}).bind(&input.source_id).fetch_all(&mut *conn).await?;
                 if !candidates.is_empty()
                     || (row.external_id.is_empty() && (repeated_fields || matches_identified_row))
                 {
@@ -193,7 +199,7 @@ async fn classify(
                     .descriptions
                     .get(&row.record)
                     .unwrap_or(&row.description),
-                Some(&input.source_id),
+                input.source_id.as_deref(),
             )
         } else {
             crate::rules::Suggestions::default()
@@ -378,13 +384,17 @@ pub async fn commit(
         }
         if item.status == "known" {
             // Preserve another file's provenance without changing its linked entry.
-            let evidence = sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id=? AND external_id=? AND external_id<>'' AND disposition='accepted' LIMIT 1")
-                .bind(&user.id).bind(&input.source_id).bind(&row.external_id).fetch_optional(&mut *tx).await?;
+            let evidence = if input.source_id.is_some() {
+                sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND external_id=? AND external_id<>'' AND disposition='accepted' LIMIT 1")
+                .bind(&user.id).bind(&input.source_id).bind(&row.external_id).fetch_optional(&mut *tx).await?
+            } else {
+                None
+            };
             if let Some(evidence) = evidence {
                 record(
                     &mut tx,
                     &user.id,
-                    &input.source_id,
+                    input.source_id.as_deref(),
                     &hash,
                     &row,
                     evidence.transaction_id.as_deref(),
@@ -393,7 +403,7 @@ pub async fn commit(
                 )
                 .await?;
             }
-            let known_id: Option<String> = sqlx::query_scalar("SELECT transaction_id FROM import_records WHERE user_id=? AND source_id=? AND file_hash=? AND record_number=? AND disposition='accepted'")
+            let known_id: Option<String> = sqlx::query_scalar("SELECT transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND file_hash=? AND record_number=? AND disposition='accepted'")
                 .bind(&user.id).bind(&input.source_id).bind(&hash).bind(row.record as i64).fetch_optional(&mut *tx).await?.flatten();
             if let Some(id) = known_id {
                 history::link(&mut tx, &batch, &user.id, &id, "known").await?;
@@ -484,7 +494,7 @@ pub async fn commit(
         record(
             &mut tx,
             &user.id,
-            &input.source_id,
+            input.source_id.as_deref(),
             &hash,
             &row,
             id.as_deref(),
@@ -514,14 +524,14 @@ pub async fn commit(
 async fn record(
     conn: &mut SqliteConnection,
     user: &str,
-    source: &str,
+    source: Option<&str>,
     hash: &str,
     row: &Row,
     id: Option<&str>,
     disposition: &str,
     interpretation: Option<&str>,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO import_records(user_id,source_id,file_hash,record_number,external_id,date,description,amount_cents,transaction_id,disposition,interpretation) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,source_id,file_hash,record_number) DO NOTHING")
-        .bind(user).bind(source).bind(hash).bind(row.record as i64).bind(&row.external_id).bind(&row.date).bind(&row.description).bind(row.cents).bind(id).bind(disposition).bind(interpretation).execute(conn).await?;
+    sqlx::query("INSERT INTO import_records(user_id,scope_id,source_id,file_hash,record_number,external_id,date,description,amount_cents,transaction_id,disposition,interpretation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,scope_id,file_hash,record_number) DO NOTHING")
+        .bind(user).bind(source.unwrap_or("")).bind(source).bind(hash).bind(row.record as i64).bind(&row.external_id).bind(&row.date).bind(&row.description).bind(row.cents).bind(id).bind(disposition).bind(interpretation).execute(conn).await?;
     Ok(())
 }

@@ -26,6 +26,7 @@
   import EntriesWorkspace from '#lib/features/ledger/EntriesWorkspace.svelte';
   import Dashboard from '#lib/features/dashboard/Dashboard.svelte';
   import Insights from '#lib/features/insights/Insights.svelte';
+  import Budgets from '#lib/features/budgets/Budgets.svelte';
   import ImportHistory from '#lib/features/imports/ImportHistory.svelte';
   import {
     parseAppearance,
@@ -34,8 +35,9 @@
     type Appearance,
   } from '#lib/appearance.ts';
   import { escapeToCancel } from '#lib/features/ledger/escape.ts';
-  let { view = 'home' }: { view?: 'home' | 'insights' | 'entries' | 'imports' | 'organize' } =
-    $props();
+  let {
+    view = 'home',
+  }: { view?: 'home' | 'insights' | 'budgets' | 'entries' | 'imports' | 'organize' } = $props();
   let refresh = $state(0);
 
   let user = $state<User | null>(null);
@@ -415,6 +417,9 @@
         <a href={resolve('/entries')} aria-current={view === 'entries' ? 'page' : undefined}>
           Entries
         </a>
+        <a href={resolve('/budgets')} aria-current={view === 'budgets' ? 'page' : undefined}>
+          Budgets
+        </a>
         <a href={resolve('/imports')} aria-current={view === 'imports' ? 'page' : undefined}>
           Imports
         </a>
@@ -435,7 +440,8 @@
         <summary>{user.username} <span aria-hidden="true">▾</span></summary>
         <div class="user-dropdown">
           <label>
-            Appearance<select
+            <span id="appearance-label">Appearance</span><select
+              aria-labelledby="appearance-label"
               value={appearance}
               onchange={(event) => chooseAppearance(event.currentTarget.value)}
             >
@@ -468,22 +474,26 @@
               ? 'The bigger picture.'
               : view === 'insights'
                 ? 'Follow the patterns.'
-                : view === 'entries'
-                  ? 'Where did it go?'
-                  : view === 'organize'
-                    ? 'A place for everything.'
-                    : 'Imports'}
+                : view === 'budgets'
+                  ? 'Make room for what matters.'
+                  : view === 'entries'
+                    ? 'Where did it go?'
+                    : view === 'organize'
+                      ? 'A place for everything.'
+                      : 'Imports'}
           </h1>
           <p class="muted">
             {view === 'home'
               ? 'A few numbers. Considerably less guessing.'
               : view === 'insights'
                 ? 'A closer look at where your money goes.'
-                : view === 'entries'
-                  ? 'Every entry, accounted for. Eventually.'
-                  : view === 'organize'
-                    ? 'Categories for the totals. Labels for the connections.'
-                    : 'A paper trail for your paper trail.'}
+                : view === 'budgets'
+                  ? 'A monthly plan, with savings kept aside.'
+                  : view === 'entries'
+                    ? 'Every entry, accounted for. Eventually.'
+                    : view === 'organize'
+                      ? 'Categories for the totals. Labels for the connections.'
+                      : 'A paper trail for your paper trail.'}
           </p>
         </div>
         {#if view === 'entries'}<div class="dashboard-actions">
@@ -534,6 +544,7 @@
           onimport={() => (importOpen = true)}
         />
       {:else if view === 'insights'}<Insights {refresh} {catalog} onunauthorized={sessionExpired} />
+      {:else if view === 'budgets'}<Budgets onunauthorized={sessionExpired} />
       {:else if view === 'entries'}<EntriesWorkspace
           onunauthorized={sessionExpired}
           {sources}

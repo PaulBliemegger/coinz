@@ -14,7 +14,7 @@ uploading a file. Changes affect future imports only.
 Appearance follows the system by default, with Light/Dark overrides.
 
 Try **Import CSV** on Home, Entries, or Imports using [demo.csv](examples/imports/demo.csv).
-Create a fresh source and profile; map Date to `date`, Amount to `amount`, and
+Create a profile (Source is optional under import details); map Date to `date`, Amount to `amount`, and
 Description to `description`. Choose `external_id` for the optional ID mapping.
 Keep the default reading settings, name/save the profile, review the 106 synthetic
 entries, then import. Reuse that profile for subsequent example files. Choose
@@ -38,7 +38,7 @@ can accept suggestions or keep its own choices. Preview history explicitly befor
 applying a rule to existing entries. Category/label deletion previews affected
 entry/rule counts. See [local rules](docs/specs/labeling-rules.md).
 Bank-specific adapters, transfer/refund handling, YAML
-profiles and planning remain deferred. See [product scope](docs/product.md) for
+profiles and advanced planning remain deferred. See [product scope](docs/product.md) for
 sequencing and the
 [specification index](docs/specs/README.md) for detailed behavior and feature status.
 Bank balance tracking and reconciliation are outside the core scope.
@@ -49,19 +49,29 @@ spending entries. Entries groups **All / Expenses / Income**, searchable categor
 and label pickers, and removable active-filter chips together. Clear filters keeps
 the selected dates and description search.
 See [reporting](docs/specs/reporting.md#spending-by-category).
-The **Insights** tab shows the full monthly report plus six-/twelve-month income
-versus expenses and category spending charts. Bars link to their entries; exact
+The **Insights** tab shows the full monthly report plus annual income
+versus expenses and category spending charts, with monthly/average expense splits. Bars link to their entries; exact
 figures are available in tables. Home's **Explore insights** link carries over
 the selected month.
 
 ### Verification status
 
-Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 48
+Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 54
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
-startup because the agent sandbox denies local sockets; browser assertions and
-visual review remain unverified. An offline Chromium launch was also unavailable.
-The category/label, compact-filter, import-review, rule, and Insights navigation/report desktop/phone journeys
-are defined but could not run.
+startup because the agent sandbox denies local sockets. The latest supplied
+local run executed all 42 desktop/phone browser journeys: 35 passed and 7 failed.
+The trend-category label fix was subsequently verified through the owner-authorized
+synthetic test browser at desktop and phone sizes, and the owner confirmed both
+complete Insights Playwright journeys passed (2 passed in 11.1s). The import
+row locator fix also passed the owner's focused desktop CSV journey. Phone CSV
+mapping now preserves its interactive table headers instead of inheriting global
+header-hiding styles; all three mappings and the synthetic preview were verified
+in the browser at phone size, with desktop layout checked too. The owner confirmed
+all three affected phone import journeys passed. The remaining overlapping-import
+failure was an ambiguous success-status assertion during refresh; it now selects
+the specific removal message. A full local suite rerun is pending. Browser checks
+remain blocking.
+An offline Chromium launch was also unavailable.
 See [agent test permissions](docs/agent-testing.md).
 The frontend checks ran with Node 26.13.1 and reported an engine warning;
 the supported project version remains Node 24.22.3.
@@ -142,6 +152,59 @@ To update after source changes, run `docker compose up -d --build`. Migrations r
 on startup. Before v1.0, schema compatibility across development changes is not
 guaranteed; take a backup before updating data you want to keep.
 
+## GitHub checks and dev images
+
+[The workflow](.github/workflows/dev.yml) runs `make check` for pull requests
+targeting `dev` or `main` and pushes to either branch, using the pinned
+Rust/Node/pnpm versions and Chromium with its system dependencies. Failed browser journeys retain synthetic
+traces/screenshots as GitHub artifacts for seven days. Other branches and release
+tags do not publish images. Browser failures remain blocking on both branches.
+
+`main` runs the same full checks without publishing images or deploying. To block
+untested changes before they reach `main`, configure a GitHub branch protection
+rule requiring pull requests and the **Full checks** status, and disallow bypass
+if the restriction should also apply to administrators. A workflow by itself
+reports failures after a direct push; it does not prevent that push. These
+repository settings are separate from this workflow and have not been configured
+by this change. See [GitHub's protected branch documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
+
+After successful checks on a `dev` push, native GitHub-hosted x86 and ARM runners
+build `linux/amd64` and `linux/arm64` images. Each image must start against a fresh
+disposable database, serve the API and static UI, create a synthetic user, and
+restart successfully. The smoke test uses no network and cleans up its container
+and anonymous data volume. Both images must pass before the combined tags publish:
+
+- `ghcr.io/<owner>/<repository>:dev` follows the latest successful run.
+- `ghcr.io/<owner>/<repository>:sha-<full-commit-sha>` identifies the checked commit.
+
+Architecture-specific `sha-<full-commit-sha>-amd64`/`-arm64` tags are staging images;
+one can exist even if the other architecture fails. Use the combined image for
+deployment. The publish job summary includes its registry digest. Pin that digest
+for a reproducible deployment; tags can move when a workflow is rerun. No `latest`
+or release tag is published yet. Docker picks the matching architecture when
+pulling the combined image; the Pi needs a 64-bit OS for `linux/arm64`.
+
+The workflow publishes to GitHub Container Registry using its `GITHUB_TOKEN`,
+with package-write permission restricted to image jobs. Repository/organization
+policy must allow those permissions and the referenced actions. Existing packages
+must grant this repository Actions access. Package visibility is managed in
+GitHub; private images require separate read credentials on the deployment host.
+No Pi credentials or deployment network access belong in CI.
+
+Deployment remains an explicit owner action in the separate private runtime.
+Its Compose configuration should select `image: ghcr.io/<owner>/<repository>@sha256:<digest>`
+instead of building from source, retain its persistent `/data` volume, and set its
+actual HTTPS origin/secure-cookie settings as described below. CI neither updates
+the private instance nor reads its data. Use Glances and normal manual workflows
+for initial performance feedback; no load-test infrastructure is required.
+
+Workflow syntax and native/container test results must be distinguished from an
+actual GitHub run: runner availability, registry permissions, image pushes, and
+multi-platform assembly are verified only when the workflow runs there. Build
+durations appear in Actions; there is no measured build-time or Pi runtime budget
+yet. The first deployment is still pending export/reimport and private-runtime
+setup.
+
 ## Local development
 
 Requirements: Bash, Make, a C compiler/build tools for SQLite, rustup, Node
@@ -211,13 +274,28 @@ pnpm --dir frontend check
 pnpm --dir frontend test
 ```
 
-To run only browser tests, first build the artifacts they serve:
+Run browser tests locally from your terminal before pushing. These targets build
+the same production artifacts as CI and start the existing isolated test server:
 
 ```sh
-pnpm --dir frontend build
-cargo build --release --locked
-pnpm --dir frontend test:e2e
+make browser-test
+make browser-test PLAYWRIGHT_ARGS='--project=phone --grep="CSV subset"'
+make browser-debug PLAYWRIGHT_ARGS='--project=phone --grep="CSV subset"'
 ```
+
+`browser-debug` opens the browser and Playwright Inspector so you can step through
+the failing action and inspect its locator. Start with a single failing journey,
+fix and rerun it locally, then run `make check` before pushing. CI verifies the
+result. No Git commit or GitHub run is needed for each debugging attempt.
+See [Playwright's debugging options](https://playwright.dev/docs/test-cli#common-options).
+
+Each invocation creates a fresh synthetic database and removes it when the test
+server exits. Prefer restarting the command between debugging attempts: the current
+journeys share their project user's state within a server lifetime, so repeated
+execution in a long-running UI/watch session can collide with earlier fixture
+names. App changes require rebuilding the artifacts; the Make targets do that.
+For test-only changes, rerun `pnpm --dir frontend exec playwright test` with the
+same project/title arguments to reuse the existing builds.
 
 Playwright uses `127.0.0.1:4100`, synthetic credentials, and a temporary database.
 It does not use your development or Compose database. Close anything already
@@ -282,3 +360,15 @@ instead of copying it into another guide.
 
 Update the affected specification and acceptance tests alongside behavior.
 Keep setup commands here and executable commands in the Makefile.
+
+### Monthly budgets
+
+Open **Budgets** for the **Saved plan vs actual** overview: planned, actual
+expenses and remaining per category. Choose **Edit monthly plan** to set targets,
+reserve savings and name expected income.
+Match recorded income to expectations to reduce the pending amount without
+counting it twice. A blank target is Not set; zero is an explicit target. Copy a
+previous plan to prepare another month; copying clears receipt links/completion.
+Save applies the draft. Figures use the saved plan and the visible Recorded through
+date, and describe monthly spending room rather than a bank balance. See
+[monthly budgets](docs/specs/planning.md). Existing data is preserved by migration.

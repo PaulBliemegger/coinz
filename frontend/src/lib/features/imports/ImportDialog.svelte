@@ -39,6 +39,7 @@
     onclose: () => void;
     onimported: (result: ImportOutcome, source: string) => Promise<void>;
   } = $props();
+  const formId = $props.id();
   let dialog: HTMLDialogElement;
   let previewHeading = $state<HTMLHeadingElement>();
   let choices = $state<Source[]>([]);
@@ -248,7 +249,7 @@
     try {
       const plan = await api<RuleSuggestions>('/rules/suggest', 'POST', {
         description: value.trim(),
-        source_id: sourceId,
+        source_id: sourceId || null,
       });
       if (generation !== reviewGeneration || suggestionRequests[record] !== request) return;
       if (plan.revision !== rulesRevision)
@@ -278,7 +279,7 @@
       '/imports/preview',
       'POST',
       {
-        source_id: sourceId,
+        source_id: sourceId || null,
         csv,
         profile_id: chosen.id,
         profile_revision: chosen.revision,
@@ -374,7 +375,7 @@
     error = '';
     try {
       const result = await api<ImportOutcome>('/imports/commit', 'POST', {
-        source_id: sourceId,
+        source_id: sourceId || null,
         csv,
         filename: file?.name,
         profile_id: profile?.id,
@@ -433,7 +434,9 @@
   </ol>
   {#if mapping}
     <div class="review-scroll">
-      <p class="muted">{file?.name} · {choices.find((source) => source.id === sourceId)?.name}</p>
+      <p class="muted">
+        {file?.name} · {choices.find((source) => source.id === sourceId)?.name ?? 'No source'}
+      </p>
       <ImportMapping
         {csv}
         {sourceId}
@@ -471,23 +474,30 @@
       </form>
     {:else}
       <form onsubmit={preview}>
-        <label>
-          Import source<select bind:value={sourceId} required disabled={working}>
-            <option value="">Choose a source</option>{#each choices as source (source.id)}<option
-                value={source.id}
-              >
-                {source.name}
-              </option>{/each}
-          </select>
-        </label>
-        <button
-          type="button"
-          class="button quiet"
-          disabled={working}
-          onclick={() => (newSource = true)}
-        >
-          + New source
-        </button>
+        <details>
+          <summary>Optional source</summary>
+          <label>
+            <span id={`${formId}-source`}>Import source</span><select
+              aria-labelledby={`${formId}-source`}
+              bind:value={sourceId}
+              disabled={working}
+            >
+              <option value="">No source</option>{#each choices as source (source.id)}<option
+                  value={source.id}
+                >
+                  {source.name}
+                </option>{/each}
+            </select>
+          </label>
+          <button
+            type="button"
+            class="button quiet"
+            disabled={working}
+            onclick={() => (newSource = true)}
+          >
+            + New source
+          </button>
+        </details>
         <label>
           CSV file<input
             type="file"
@@ -504,10 +514,14 @@
         {#if file}<p class="muted">Selected file: {file.name}</p>{/if}
         <p class="muted">
           Up to 256 KiB and 1,000 records. Preview first; nothing is added until you confirm.
-          Sources hold no bank balance.
+          Sources are optional metadata and hold no bank balance.
         </p>
         <label>
-          Import profile<select bind:value={profileId} disabled={working || loadingProfiles}>
+          <span id={`${formId}-profile`}>Import profile</span><select
+            aria-labelledby={`${formId}-profile`}
+            bind:value={profileId}
+            disabled={working || loadingProfiles}
+          >
             <option value="">Create a new profile</option>
             {#each profiles as item (item.id)}<option value={item.id}>{item.name}</option>{/each}
           </select>
@@ -528,7 +542,7 @@
           <button
             type="button"
             class="button quiet"
-            disabled={working || !sourceId || !file}
+            disabled={working || !file}
             onclick={async () => {
               busy = true;
               error = '';
@@ -566,7 +580,6 @@
             loadingProfiles ||
             checkingFile ||
             (profile !== null && !compatible) ||
-            !sourceId ||
             !file}
         >
           {busy || checkingFile ? 'Reading…' : profile ? 'Review entries' : 'Map columns'}
@@ -576,7 +589,9 @@
   {:else}
     <div class="review-scroll">
       <h3 bind:this={previewHeading} tabindex="-1">Review {rows.length} entries</h3>
-      <p class="muted">{file?.name} · {choices.find((source) => source.id === sourceId)?.name}</p>
+      <p class="muted">
+        {file?.name} · {choices.find((source) => source.id === sourceId)?.name ?? 'No source'}
+      </p>
       {#if attention.length}<h3 class="group-heading">Needs attention · {attention.length}</h3>
         {#each attention as row (row.record)}<ImportReviewRow
             {row}
@@ -638,7 +653,8 @@
             <form class="classification-picker" onsubmit={bulkClassify}>
               {#if bulkAction === 'set_category'}
                 <label>
-                  Category for selected additions<select
+                  <span id={`${formId}-bulk-category`}>Category for selected additions</span><select
+                    aria-labelledby={`${formId}-bulk-category`}
                     bind:value={bulkCategory}
                     disabled={working}
                   >
