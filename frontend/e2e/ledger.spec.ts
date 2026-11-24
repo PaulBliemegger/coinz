@@ -251,7 +251,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   let dialog = await importFile(page, filename, csv, `History ${info.project.name}`);
   await expect(dialog.getByRole('heading', { name: 'Review 32 entries' })).toBeVisible();
   const importRow = dialog.locator('.review-row').filter({
-    has: dialog.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
+    has: page.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
   });
   const include = importRow.getByRole('checkbox', {
     name: 'Include Demo purchase 00',
@@ -340,7 +340,9 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await page.getByRole('button', { name: 'Confirm removal', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('31 imported entries removed');
+  await expect(
+    page.getByRole('status').filter({ hasText: /^31 imported entries removed\./ }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove 0 entries', exact: true })).toBeDisabled();
   await page
     .locator('details')
@@ -350,7 +352,9 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await otherEdited.check();
   await page.getByRole('button', { name: 'Remove 1 entries', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm removal', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('1 imported entries removed');
+  await expect(
+    page.getByRole('status').filter({ hasText: /^1 imported entries removed\./ }),
+  ).toBeVisible();
   // Deletion releases all evidence so the file can be imported again.
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Import CSV' });
@@ -381,7 +385,7 @@ test('CSV subset, repeat preview, history removal and protected edits across pag
   await expect(dialog.getByText('1 already imported · excluded', { exact: true })).toBeVisible();
   await dialog.getByText('1 already imported · excluded', { exact: true }).click();
   const knownRow = dialog.locator('.review-row').filter({
-    has: dialog.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
+    has: page.getByRole('checkbox', { name: 'Include Demo purchase 00', exact: true }),
   });
   await expect(knownRow.getByRole('checkbox')).toBeDisabled();
   await knownRow.getByRole('heading', { name: 'Demo purchase 00', exact: true }).click();
@@ -509,7 +513,9 @@ test('overlapping imports retain one creator and disclose cross-import removals'
   await page.getByRole('button', { name: 'Remove 2 entries', exact: true }).click();
   await page.screenshot({ path: info.outputPath('overlap-removal.png'), fullPage: true });
   await page.getByRole('button', { name: 'Confirm removal', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('2 imported entries removed');
+  await expect(
+    page.getByRole('status').filter({ hasText: /^2 imported entries removed\./ }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '← All imports', exact: true }).click();
   await page.getByRole('button', { name: `Review ${second}`, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove 1 entries', exact: true })).toBeEnabled();

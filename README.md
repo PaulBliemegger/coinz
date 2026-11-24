@@ -58,11 +58,20 @@ the selected month.
 
 Verification snapshot (2026-11-24): `make check` passed formatting, lint, all 54
 Rust tests, frontend type/unit checks, and native production builds. It stopped at Playwright server
-startup because the agent sandbox denies local sockets. An initial GitHub run
-executed all 42 desktop/phone browser journeys: 20 passed and 22 failed. Fixes
-address dropdown label lookup, inline-edit selector ambiguity and an Insights
-fixture assigning an archived category; a successful GitHub rerun and visual
-review are still required. An offline Chromium launch was also unavailable.
+startup because the agent sandbox denies local sockets. The latest supplied
+local run executed all 42 desktop/phone browser journeys: 35 passed and 7 failed.
+The trend-category label fix was subsequently verified through the owner-authorized
+synthetic test browser at desktop and phone sizes, and the owner confirmed both
+complete Insights Playwright journeys passed (2 passed in 11.1s). The import
+row locator fix also passed the owner's focused desktop CSV journey. Phone CSV
+mapping now preserves its interactive table headers instead of inheriting global
+header-hiding styles; all three mappings and the synthetic preview were verified
+in the browser at phone size, with desktop layout checked too. The owner confirmed
+all three affected phone import journeys passed. The remaining overlapping-import
+failure was an ambiguous success-status assertion during refresh; it now selects
+the specific removal message. A full local suite rerun is pending. Browser checks
+remain blocking.
+An offline Chromium launch was also unavailable.
 See [agent test permissions](docs/agent-testing.md).
 The frontend checks ran with Node 26.13.1 and reported an engine warning;
 the supported project version remains Node 24.22.3.
@@ -265,13 +274,28 @@ pnpm --dir frontend check
 pnpm --dir frontend test
 ```
 
-To run only browser tests, first build the artifacts they serve:
+Run browser tests locally from your terminal before pushing. These targets build
+the same production artifacts as CI and start the existing isolated test server:
 
 ```sh
-pnpm --dir frontend build
-cargo build --release --locked
-pnpm --dir frontend test:e2e
+make browser-test
+make browser-test PLAYWRIGHT_ARGS='--project=phone --grep="CSV subset"'
+make browser-debug PLAYWRIGHT_ARGS='--project=phone --grep="CSV subset"'
 ```
+
+`browser-debug` opens the browser and Playwright Inspector so you can step through
+the failing action and inspect its locator. Start with a single failing journey,
+fix and rerun it locally, then run `make check` before pushing. CI verifies the
+result. No Git commit or GitHub run is needed for each debugging attempt.
+See [Playwright's debugging options](https://playwright.dev/docs/test-cli#common-options).
+
+Each invocation creates a fresh synthetic database and removes it when the test
+server exits. Prefer restarting the command between debugging attempts: the current
+journeys share their project user's state within a server lifetime, so repeated
+execution in a long-running UI/watch session can collide with earlier fixture
+names. App changes require rebuilding the artifacts; the Make targets do that.
+For test-only changes, rerun `pnpm --dir frontend exec playwright test` with the
+same project/title arguments to reuse the existing builds.
 
 Playwright uses `127.0.0.1:4100`, synthetic credentials, and a temporary database.
 It does not use your development or Compose database. Close anything already

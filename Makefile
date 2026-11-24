@@ -1,4 +1,6 @@
-.PHONY: setup dev backend frontend quickcheck check format hooks browser-install
+.PHONY: setup dev backend frontend quickcheck check format hooks browser-install browser-build browser-test browser-debug
+
+PLAYWRIGHT_ARGS ?=
 
 setup:
 	pnpm --dir frontend install --frozen-lockfile
@@ -37,3 +39,13 @@ hooks:
 
 browser-install:
 	pnpm --dir frontend exec playwright install chromium
+
+browser-build:
+	pnpm --dir frontend build
+	cargo build --release --locked
+
+browser-test: browser-build
+	pnpm --dir frontend exec playwright test $(PLAYWRIGHT_ARGS)
+
+browser-debug: browser-build
+	pnpm --dir frontend exec playwright test --debug $(PLAYWRIGHT_ARGS)

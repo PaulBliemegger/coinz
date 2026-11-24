@@ -421,8 +421,26 @@
     max-height: 360px;
   }
   table {
+    display: table;
     border-collapse: collapse;
     min-width: 100%;
+  }
+  /* Column headers are interactive controls, so keep the sample tabular on phones. */
+  thead {
+    display: table-header-group;
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    overflow: visible;
+  }
+  tbody {
+    display: table-row-group;
+    width: auto;
+  }
+  tbody tr {
+    display: table-row;
+    padding: 0;
   }
   th,
   td {

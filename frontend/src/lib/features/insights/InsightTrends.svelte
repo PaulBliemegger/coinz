@@ -14,6 +14,7 @@
     catalog: ClassificationCatalog;
     onunauthorized: () => void;
   } = $props();
+  const formId = $props.id();
   let categoryId = $state('');
   let data = $state<InsightTrends | null>(null);
   let loading = $state(true);
@@ -52,7 +53,10 @@
 <section class="insight-trends" aria-label="Monthly trends">
   <div class="trend-controls">
     <label>
-      Trend category<select bind:value={categoryId}>
+      <span id={`${formId}-category`}>Trend category</span><select
+        aria-labelledby={`${formId}-category`}
+        bind:value={categoryId}
+      >
         <option value="">Uncategorized</option>
         {#each catalog.categories as category (category.id)}<option value={category.id}>
             {category.name}{category.archived ? ' · Archived' : ''}

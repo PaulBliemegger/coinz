@@ -51,6 +51,8 @@ category. Label analysis and automatic period-change comparisons remain proposed
 An Overview year control selects January–December for both annual graphs, placed
 above the Monthly overview. The category selector changes only the category
 expense series and includes Uncategorized, archived and unused categories. The
+selector's accessible name is exactly **Trend category**, independent of its
+options or selection. The
 monthly picker selects the month below and also synchronizes the overview year.
 Range selectors have been removed from the UI; the earlier rolling API remains
 available for compatibility.
