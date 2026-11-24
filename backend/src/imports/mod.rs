@@ -1,6 +1,7 @@
 mod classification;
 pub mod history;
 mod parse;
+pub mod portable;
 pub mod profiles;
 
 use crate::{
@@ -124,6 +125,7 @@ async fn classify(
         .collect();
     let mut seen_ids = HashSet::new();
     let mut seen_fields = HashSet::new();
+    let mut seen_native = HashSet::new();
     let mut result = Vec::new();
     for row in rows {
         let mut status = "new";
@@ -132,10 +134,19 @@ async fn classify(
         let fields = (row.date.clone(), row.description.clone(), row.cents);
         let matches_identified_row = fields_with_ids.contains(&fields);
         let repeated_fields = !seen_fields.insert(fields);
+        let repeated_native = row
+            .portable
+            .as_ref()
+            .is_some_and(|m| !seen_native.insert(m.entry_ref.clone()));
+        let native_existing = portable::existing(conn, user, &row).await?;
         let repeated_file = sqlx::query_as::<_, Evidence>("SELECT external_id,date,description,amount_cents,transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND file_hash=? AND record_number=?")
             .bind(user).bind(&input.source_id).bind(hash).bind(row.record as i64).fetch_optional(&mut *conn).await?;
         if row.error.is_some() {
             status = "invalid";
+        } else if repeated_native {
+            status = "conflict";
+        } else if let Some((_, same)) = native_existing {
+            status = if same { "known" } else { "conflict" };
         } else if let Some(original) = repeated_file {
             status = if original.date == row.date
                 && original.description == row.description
@@ -183,7 +194,9 @@ async fn classify(
                     .bind(&input.source_id).bind(&row.date).bind(&row.description).bind(row.cents)
                     .bind(if input.source_id.is_none(){""}else{&row.external_id}).bind(&input.source_id).fetch_all(&mut *conn).await?;
                 if !candidates.is_empty()
-                    || (row.external_id.is_empty() && (repeated_fields || matches_identified_row))
+                    || (row.portable.is_none()
+                        && row.external_id.is_empty()
+                        && (repeated_fields || matches_identified_row))
                 {
                     status = "review";
                 }
@@ -192,7 +205,7 @@ async fn classify(
         let description_error = crate::domain::text(&row.description, "Description", 200)
             .err()
             .map(|e| e.1);
-        let rule_suggestions = if matches!(status, "new" | "review") {
+        let rule_suggestions = if row.portable.is_none() && matches!(status, "new" | "review") {
             crate::rules::suggest(
                 &rules,
                 input
@@ -238,6 +251,18 @@ async fn interpretation(
     input: &Input,
     commit: bool,
 ) -> Result<Option<profiles::Layout>> {
+    if portable::recognizes(&input.csv) {
+        if input.source_id.is_some()
+            || input.profile_id.is_some()
+            || input.layout.is_some()
+            || input.profile_revision.is_some()
+        {
+            return Err(AppError::invalid(
+                "Coinz exports restore their own sources and columns; do not select a source or profile.",
+            ));
+        }
+        return Ok(None);
+    }
     match (&input.profile_id, &input.layout) {
         (Some(id), None) => Ok(Some(
             profiles::resolve(conn, user, id, input.profile_revision).await?,
@@ -253,6 +278,9 @@ async fn interpretation(
     }
 }
 fn interpret(input: &Input, layout: Option<&profiles::Layout>) -> Result<Vec<Row>> {
+    if portable::recognizes(&input.csv) {
+        return portable::parse(&input.csv);
+    }
     match layout {
         Some(layout) => parse::mapped(&input.csv, layout),
         None => parse::parse(&input.csv),
@@ -403,8 +431,13 @@ pub async fn commit(
                 )
                 .await?;
             }
-            let known_id: Option<String> = sqlx::query_scalar("SELECT transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND file_hash=? AND record_number=? AND disposition='accepted'")
+            let mut known_id: Option<String> = sqlx::query_scalar("SELECT transaction_id FROM import_records WHERE user_id=? AND source_id IS ? AND file_hash=? AND record_number=? AND disposition='accepted'")
                 .bind(&user.id).bind(&input.source_id).bind(&hash).bind(row.record as i64).fetch_optional(&mut *tx).await?.flatten();
+            if known_id.is_none() && row.portable.is_some() {
+                known_id = portable::existing(&mut tx, &user.id, &row)
+                    .await?
+                    .map(|(id, _)| id);
+            }
             if let Some(id) = known_id {
                 history::link(&mut tx, &batch, &user.id, &id, "known").await?;
             }
@@ -436,6 +469,9 @@ pub async fn commit(
                     ));
                 }
                 history::link(&mut tx, &batch, &user.id, transaction_id, "matched").await?;
+                if let Some(metadata) = &row.portable {
+                    portable::link(&mut tx, &user.id, transaction_id, &metadata.entry_ref).await?;
+                }
                 outcome.matched += 1;
                 (Some(transaction_id.clone()), "accepted")
             }
@@ -449,9 +485,17 @@ pub async fn commit(
                     200,
                 )?;
                 let id = Uuid::new_v4().to_string();
-                sqlx::query("INSERT INTO transactions(id,user_id,source_id,date,description,amount_cents,origin) VALUES(?,?,?,?,?,?,'csv')")
-                    .bind(&id).bind(&user.id).bind(&input.source_id).bind(&row.date).bind(description).bind(row.cents).execute(&mut *tx).await?;
-                if let Some(draft) = input.classifications.get(&row.record) {
+                let source = if let Some(metadata) = &row.portable {
+                    portable::source(&mut tx, &user.id, metadata).await?
+                } else {
+                    input.source_id.clone()
+                };
+                let origin = row.portable.as_ref().map_or("csv", |m| m.origin.as_str());
+                sqlx::query("INSERT INTO transactions(id,user_id,source_id,date,description,amount_cents,origin) VALUES(?,?,?,?,?,?,?)")
+                    .bind(&id).bind(&user.id).bind(&source).bind(&row.date).bind(description).bind(row.cents).bind(origin).execute(&mut *tx).await?;
+                if let Some(metadata) = &row.portable {
+                    portable::apply(&mut tx, &user.id, &id, metadata).await?;
+                } else if let Some(draft) = input.classifications.get(&row.record) {
                     classification::apply(&mut tx, &user.id, &id, draft).await?;
                 } else if input.rules_revision.is_some() {
                     let suggestions = &item.rule_suggestions;

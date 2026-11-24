@@ -34,6 +34,14 @@ export interface Summary {
 }
 
 export interface ImportRow {
+  portable?: {
+    category: string;
+    labels: string[];
+    source: string;
+    entry_ref: string;
+    source_ref: string;
+    origin: string;
+  };
   rule_suggestions?: RuleSuggestions;
   record: number;
   date: string;

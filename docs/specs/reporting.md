@@ -1,7 +1,7 @@
 # Dashboard, Insights and Entries
 
-Status: implemented. Automated evidence is described below; browser verification
-status is recorded in the README.
+Status: implemented. Automated evidence is described below; executed checks are recorded in
+[verification status](../development.md#verification-status).
 
 ## Home dashboard
 
@@ -93,7 +93,7 @@ averages, not forecasts, completeness guarantees or bank balances.
 
 ## Spending by category
 
-Implemented; browser/visual verification status is recorded in the README.
+Implemented.
 Below the monthly totals, Home shows spending for that selected calendar month
 as ranked horizontal bars. Each row exposes the category name, exact EUR amount,
 and percentage of that month's recorded spending as text, without requiring hover.

@@ -1,7 +1,7 @@
 # Manual ledger
 
 Status: implemented; current verification limits are in the
-[README](../../README.md#verification-status).
+[development guide](../development.md#verification-status).
 Manual tracking is independent of accounts and balances. Sources are optional metadata.
 Purpose: record personal EUR finances accurately while making incomplete history
 visible. [Product scope](../product.md) owns the general recorded-figure semantics.
@@ -123,14 +123,13 @@ wrap on phones; do not separate the confirmation from the bin.
 Bulk deletion validates all IDs and ownership under one write lock and deletes
 atomically. A missing/foreign ID rejects the entire set; reject empty, duplicate,
 or more-than-100 ID lists. Delete associated import evidence so these entries
-can be imported again. Migration 0006 also clears existing accepted deletion
-markers from older versions. No undo
-is promised. CSRF applies to bulk deletion and inline writes.
+can be imported again. No undo is promised. CSRF applies to bulk deletion and
+inline writes.
 
 `origin` is `manual`, `csv`, or `unknown`, independent of the editable source.
 New manual/API entries have manual origin; new import additions have csv origin.
-Matching adds evidence without changing origin. Migration 0005 leaves older origins
-unknown rather than inferring from source or ambiguous prior import associations.
+Matching adds evidence without changing origin. Unknown origin remains supported
+for portable entries; source metadata never determines origin.
 List responses include `csv_linked`; non-CSV-origin entries with evidence say CSV
 matched. The entry list no longer renders an import-details foldout. The owned provenance
 API remains available (up to 20 rows) for future interfaces and regression tests,
@@ -168,15 +167,14 @@ records, and 422 validation. Origin errors name the configured app address;
 token errors ask for a refresh. Framework JSON/body-size rejections can have another
 shape, which the UI handles generically.
 
-## Preserved legacy data
+## Schema baseline
 
-Migration `0003_optional_transaction_sources.sql` renames accounts to transaction
-sources and preserves IDs, owners, names, entry IDs, amounts, dates, descriptions,
-and creation times. It makes the source reference nullable. Prior migrations remain
-unchanged. Opening figures and snapshots remain stored as retired records, with no
-active API/UI or effect on reports. They are not repurposed into planning inputs.
-No personal database is inspected/migrated during development; migration tests
-use fresh synthetic databases. Deployment applies the migration on startup.
+`0001_initial.sql` creates the current ledger directly, with nullable transaction
+sources and no account, opening-balance or snapshot tables. The pre-v0.1 migration
+history has been replaced; databases from that history require an explicit reset.
+The [development reset procedure](../development.md#development-schema-baseline-and-reset)
+owns the commands. Startup must reject incompatible histories rather than reset
+or rewrite existing data. All agent verification uses temporary synthetic databases.
 
 ## Acceptance evidence
 
@@ -193,8 +191,7 @@ use fresh synthetic databases. Deployment applies the migration on startup.
 - Field-specific updates preserve the other entry fields and origin; CSV matches
   retain the existing entry and expose its original import evidence.
 - A bulk deletion containing a missing or foreign ID rolls back the entire set.
-  Successful deletion releases linked imports for reimport; migration 0006 also
-  removes legacy deletion markers.
+  Successful deletion releases linked imports for reimport.
 
 `backend/tests/ledger.rs` covers these API and persistence cases along with session
 rotation, persistence, logout, and CSRF/origin. The expiry policy uses the session
@@ -207,14 +204,13 @@ journeys in `frontend/e2e/ledger.spec.ts` cover inline editing, selection prefer
 deletion confirmation, round row selection, edit/selection independence, keyboard
 selection, reduced motion, appearance, dashboard navigation, and period filters
 alongside manual entry.
-These browser journeys define coverage, not a claim that their assertions or
-screenshots have been verified; see the README verification status.
 
 ## Appearance and user menu
 
 Clicking the username opens a native disclosure containing Appearance, Settings,
-and Log out. Escape and outside pointer interaction close it. Settings still opens
-the separate sidebar for selection visibility; no export placeholder is added.
+and Log out. Escape and outside pointer interaction close it. Settings opens the
+sidebar with selection visibility and the implemented
+[data portability controls](data-portability.md).
 
 Appearance offers System (default), Light, and Dark. A validated localStorage
 preference (`coinz.appearance`) contains only that enum; missing/invalid/unavailable

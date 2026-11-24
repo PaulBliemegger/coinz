@@ -1,7 +1,7 @@
 # Local labeling rules
 
 Status: implemented. Browser/visual verification limits are recorded in the
-[README](../../README.md#verification-status). This feature uses local,
+[development guide](../development.md#verification-status). This feature uses local,
 deterministic description matching; no AI, external service, merchant database,
 or silent learning is involved. [Classification](classification.md) owns category
 and label meaning, assignment, archival, and deletion.
@@ -151,5 +151,4 @@ temporary-SQLite cases in `backend/tests/ledger.rs` cover ownership, suggestions
 conflicts, source scope, stale revisions, import baselines, historical previews,
 deletion counts/atomicity, and target lifecycle. Frontend import tests cover manual
 precedence across suggestion refresh. Browser journeys define responsive rule
-editing, suggestions, conflicts, and deletion confirmations; the README records
-whether browser assertions and screenshots actually ran.
+editing, suggestions, conflicts, and deletion confirmations.

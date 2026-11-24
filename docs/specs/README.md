@@ -6,24 +6,25 @@ screen. Read [product scope](../product.md) for goals and sequencing, and
 
 | Spec | State | Scope |
 | --- | --- | --- |
-| [Manual ledger](manual-ledger.md) | Implemented | Identity, optional sources, entries, period totals, preserved legacy data |
+| [Manual ledger](manual-ledger.md) | Implemented | Identity, optional sources, entries, period totals, clean schema baseline |
 | [CSV import and duplicate review](csv-import.md) | Implemented | Example format, shared duplicate review, atomic commit |
-| [CSV import profiles](import-profiles.md) | Implemented; browser verification blocked | Reusable profiles and independent editor, guided CSV table mapping, editable import review |
-| [Dashboard, Insights and Entries](reporting.md) | Implemented; browser verification blocked | Home, monthly Insights report, annual charts and monthly/average expense splits, drill-downs, filters, pagination, all-result totals |
-| [Categories and labels](classification.md) | Core and import review implemented; browser verification blocked | Single category, optional labels, setup, management, bulk assignment, filters, import drafts and counted deletion; proposed insights |
-| [Local labeling rules](labeling-rules.md) | Implemented; browser verification blocked | Deterministic rules, suggestions, conflicts, historical previews and target lifecycle |
+| [CSV import profiles](import-profiles.md) | Implemented | Reusable profiles and independent editor, guided CSV table mapping, editable import review |
+| [Dashboard, Insights and Entries](reporting.md) | Implemented | Home, monthly Insights report, annual charts and monthly/average expense splits, drill-downs, filters, pagination, all-result totals |
+| [Categories and labels](classification.md) | Implemented | Single category, optional labels, setup, management, bulk assignment, filters, import drafts and counted deletion; proposed insights |
+| [Local labeling rules](labeling-rules.md) | Implemented | Deterministic rules, suggestions, conflicts, historical previews and target lifecycle |
 | [Import history](import-history.md) | Implemented | Batch history and protected cross-period removal |
-| [Entry export and reimport](data-portability.md) | Deferred; not implemented | Portable CSV copies, native reimport, boundary with full backups |
-| [Monthly budgets](planning.md) | Implemented; browser verification blocked | Category targets, savings reservations, named expected income, receipt matching, copy and year context |
+| [Data portability](data-portability.md) | CSV and settings JSON implemented | Per-user CSV snapshots, native import review and versioned setup restoration into empty accounts |
+| [Monthly budgets](planning.md) | Implemented | Category targets, savings reservations, named expected income, receipt matching, copy and year context |
 
 Implemented means the behavior exists in source; it does not imply completed
-browser/visual verification. The [README](../../README.md#verification-status)
+browser/visual verification. The [development guide](../development.md#verification-status)
 records the current shared verification status. Proposed/deferred specs describe
 future behavior, not capabilities of the running app.
 
 Richer insights remain proposed in the
 [categories and labels spec](classification.md). Account balances, reconciliation, and historical balance reconstruction
-are outside the core. Snapshot APIs/UI have been retired; legacy data remains stored.
+are outside the core. Snapshot APIs/UI and their storage are absent from the
+clean development baseline.
 
 ## Keeping specs useful
 
@@ -38,5 +39,6 @@ are outside the core. Snapshot APIs/UI have been retired; legacy data remains st
   Move content to named feature specs, preserving links; do not copy it.
 - Add an architecture decision record only for a consequential tradeoff whose
   rationale would otherwise be lost. Do not create one for every library or edit.
-- Keep source/test details in code and setup commands in the README/Makefile.
+- Keep source/test details in code and setup/check commands in the development
+  guide/Makefile.
   Specs describe what should happen and why it matters.

@@ -1,7 +1,7 @@
 # Categories and labels
 
 Status: core and import-review classification implemented. Browser/visual
-verification limits are recorded in the [README](../../README.md#verification-status).
+verification limits are recorded in the [development guide](../development.md#verification-status).
 Local [labeling rules](labeling-rules.md) are implemented; category/label
 comparison charts remain proposed.
 
@@ -231,7 +231,6 @@ inserted), wrong-kind/foreign/archived items, selected subsets, baseline revisio
 matching and retry preservation. `frontend/e2e/ledger.spec.ts` defines bulk/per-row
 review editing, cancellation, draft-to-match discard, commit, and screenshots;
 classification journeys also check desktop/phone row placement.
-See README for whether those journeys actually ran; source coverage is not visual QA.
 `frontend/e2e/entry-filters.spec.ts` defines desktop/phone compact-picker search,
 combined type/category/label matching, selected archived retention, Unlabeled,
 active-chip removal, Escape/outside dismissal, clear-without-losing-period/search,

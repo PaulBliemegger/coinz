@@ -9,6 +9,7 @@ pub mod imports;
 pub mod ledger;
 pub mod reports;
 pub mod rules;
+pub mod settings_portability;
 
 use axum::{
     Router,
@@ -109,6 +110,8 @@ pub async fn app(
         .route("/transactions/classify", post(classification::assign))
         .route("/summary", get(ledger::summary))
         .route("/entries", get(reports::entries))
+        .route("/exports/entries.csv", get(imports::portable::export))
+        .route("/exports/settings.json", get(settings_portability::export))
         .route("/dashboard", get(reports::dashboard))
         .route("/budgets/{month}", get(budgets::get).put(budgets::save))
         .route("/insights/trends", get(reports::trends::get))
@@ -132,6 +135,26 @@ pub async fn app(
                     post(imports::history::remove),
                 )
                 .layer(RequestBodyLimitLayer::new(64 * 1024)),
+        )
+        .merge(
+            Router::new()
+                .route(
+                    "/settings/restore/preview",
+                    post(settings_portability::preview),
+                )
+                .route(
+                    "/settings/restore/commit",
+                    post(settings_portability::restore),
+                )
+                .layer(axum::extract::DefaultBodyLimit::max(8 * 1024 * 1024))
+                .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024)),
+        )
+        .merge(
+            Router::new()
+                .route("/imports/restore/preview", post(imports::preview))
+                .route("/imports/restore/commit", post(imports::commit))
+                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024))
+                .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)),
         )
         .merge(
             Router::new()

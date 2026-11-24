@@ -1,13 +1,14 @@
 # Private finance data and development isolation
 
 Status: required deployment boundary; not enforced by the repository alone.
-The current development session has broad filesystem read access. Its code
-changes and instructions do not establish an absolute data-access guarantee.
+Repository instructions and source changes do not enforce access controls.
+Configure runtime and development isolation outside the application.
 
 ## Requirements
 
 Real transactions, balances, bank exports, credentials, logs, screenshots, browser
-sessions, and backups must stay on the owner's laptop and out of agent context.
+sessions, and backups must stay in the owner's private runtime and out of agent
+context.
 Code development uses synthetic fixtures only. Never treat replacing names in a
 real export as proof that its financial content has been anonymized.
 
@@ -19,9 +20,10 @@ socket, production browser profile, production credentials, or network route to
 the real application. Docker used inside that VM must be a separate daemon.
 A container connected to the host Docker socket does not provide this separation.
 
-Run the private application under a separate host user that the development
-identity cannot impersonate. That user owns its data directory, imports, backups,
-configuration, and private browser profile. Keep the source checkout shared with
+The private runtime may be on the owner's laptop, Pi or homelab host. Run it
+under a separate host user that the development identity cannot impersonate. That
+user owns its data directory, imports, backups, configuration, and private browser
+profile. Keep the source checkout shared with
 the agent free of real data; private deployment configuration belongs outside it.
 
 The owner reviews the built source/image and explicitly deploys it to the private
@@ -74,8 +76,9 @@ and must not be interpreted as proof of zero egress.
 `compose.yaml` publishes only to loopback, but its default Docker network does
 not enforce outbound isolation. Its named data volume is outside the source tree,
 but an agent with host Docker daemon access can potentially access it. Native
-`data/` is inside the checkout and therefore unsuitable for real data under the
-current development permissions. Runtime isolation must be configured separately.
+`data/` is inside the checkout and therefore unsuitable for real data in an
+agent-accessible development environment. Runtime isolation must be configured
+separately.
 
 ## Repository rules
 

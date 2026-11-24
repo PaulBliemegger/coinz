@@ -59,6 +59,7 @@ pub struct Income {
     pub received_cents: String,
     pub pending_cents: String,
     pub invalid_receipt_count: usize,
+    pub unrestored_receipt_count: usize,
 }
 #[derive(Serialize)]
 pub struct Category {
@@ -140,6 +141,12 @@ pub async fn save(
     if current.unwrap_or(0) != input.revision {
         return Err(AppError::invalid(
             "This month's plan changed. Reload before saving your changes.",
+        ));
+    }
+    let unrestored: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM portable_income_receipts r JOIN expected_income e ON e.id=r.expected_id AND e.user_id=r.user_id WHERE e.user_id=? AND e.month=?)").bind(&user.id).bind(&month).fetch_one(&mut *tx).await?;
+    if unrestored {
+        return Err(AppError::invalid(
+            "Restore this month's income entries from CSV before editing its budget. Some saved receipt links are still waiting for their entries.",
         ));
     }
     let old_links: HashSet<(String,String)>=sqlx::query_as("SELECT r.transaction_id,r.expected_id FROM income_receipts r JOIN expected_income e ON e.user_id=r.user_id AND e.id=r.expected_id WHERE e.user_id=? AND e.month=?").bind(&user.id).bind(&month).fetch_all(&mut *tx).await?.into_iter().collect();

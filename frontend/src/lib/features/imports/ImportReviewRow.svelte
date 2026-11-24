@@ -157,7 +157,7 @@
             </button>
           </div>
         </form>
-      {:else if row.status !== 'known' && !choice.startsWith('match:')}
+      {:else if !row.portable && row.status !== 'known' && !choice.startsWith('match:')}
         <h4>
           <button
             id={`import-description-${row.record}`}
@@ -186,7 +186,12 @@
     </div>
     <span class="amount">{row.amount_cents ? money(row.amount_cents, true) : 'Not validated'}</span>
   </div>
-  {#if selectable}
+  {#if row.portable}
+    <p class="muted">
+      {row.portable.category || 'Uncategorized'} · Labels: {row.portable.labels.join(', ') ||
+        'None'} · Source: {row.portable.source || 'No source'}
+    </p>
+  {:else if selectable}
     <div class="draft-classification">
       <ClassificationEditor
         {catalog}

@@ -10,7 +10,14 @@ const data = mkdtempSync(join(tmpdir(), 'coinz-e2e-'));
 const testEnv = { ...process.env, TOKIO_WORKER_THREADS: '2' };
 const passwordFile = join(data, 'synthetic-password');
 writeFileSync(passwordFile, 'synthetic-browser-password\n', { mode: 0o600 });
-for (const username of ['desktop-user', 'phone-user']) {
+for (const username of [
+  'desktop-user',
+  'phone-user',
+  'desktop-settings-source',
+  'phone-settings-source',
+  'desktop-settings-restore',
+  'phone-settings-restore',
+]) {
   const passwordInput = openSync(passwordFile, 'r');
   const result = spawnSync(
     binary,

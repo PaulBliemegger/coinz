@@ -2,8 +2,11 @@
 
 coinz is a small personal finance web app. Read `docs/product.md` for scope and
 `docs/architecture.md` for implementation decisions before changing behavior.
-Read `docs/specs/README.md` and the relevant feature spec. Scoped backend/frontend
-`AGENTS.md` files add language-specific rules without duplicating this file.
+Read `docs/specs/README.md` and the relevant feature spec. For UI changes, also
+read `docs/design.md`; for deployment work, read `docs/deployment.md` and
+`docs/privacy.md`. Scoped backend/frontend `AGENTS.md` files add language-specific
+rules without duplicating this file. Documentation-only work needs the affected
+documents and their source/configuration references.
 
 ## Collaboration
 
@@ -60,10 +63,14 @@ Read `docs/specs/README.md` and the relevant feature spec. Scoped backend/fronte
 
 Run `make quickcheck` for formatting/frontend lint and `make check` for the full
 suite, including Rust lint/tests, frontend type/unit checks, production builds,
-and Playwright journeys. `make format` applies formatting. See the README for
-prerequisites and scoped instructions for individual checks. Do not claim the
-full suite passed if browser or other required checks could not run.
+and Playwright journeys. `make format` applies formatting. See
+`docs/development.md` for prerequisites, commands and current verification status.
+Do not claim the full suite passed if browser or other required checks could not run.
 
+- For documentation-only changes, check relative links and section anchors,
+  verify commands/claims against source and configuration, and run
+  `git diff --check`. Application tests/builds are not required unless application
+  code, dependencies, executable scripts or build/test configuration also change.
 - Pre-commit checks should be quick. Run the full checks before handing off a
   completed implementation slice, and report any failures or unavailable checks.
 - Prefer Rust unit tests for calculations and parsing, temporary SQLite database
@@ -78,7 +85,11 @@ full suite passed if browser or other required checks could not run.
 
 - Update affected docs in the same change as behavior. Keep each rule in one
   authoritative place and link to it elsewhere.
-- `README.md`: setup, commands, current runnable status.
+- `README.md`: concise project entry point, quick start, current runnable status
+  and links to authoritative guides.
+- `docs/development.md`: local setup, test/debug commands, disposable resets and
+  current verification evidence. `Makefile` owns executable check targets.
+- `docs/deployment.md`: image delivery, runtime configuration and operations.
 - `docs/product.md`: goals, scope, sequencing, and unresolved product choices.
 - `docs/specs/`: authoritative detailed feature behavior and acceptance evidence.
   Label implemented, proposed, and deferred behavior explicitly. Split documents

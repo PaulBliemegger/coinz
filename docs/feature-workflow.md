@@ -1,71 +1,47 @@
-# Feature chats and handovers
+# Feature work and handovers
 
-Use one chat per coherent feature, with one active implementation slice at a time.
-A new chat does not require a new branch or worktree for this solo workflow.
-Use worktrees only when deliberately running independent work in parallel.
+Keep one active implementation slice with a concrete user outcome. Continue in
+the same chat while its context remains useful; a fresh chat can help with a new
+feature, an independent review or an unfinished handover. A new chat does not
+require a branch or worktree. Follow [AGENTS.md](../AGENTS.md) for collaboration,
+Git authorization, privacy and verification rules. Do not create commits, branches,
+pushes or merges without user authorization. Use worktrees only for deliberately
+independent parallel work.
 
-## Start
+## Define and implement
 
-Give the chat a concrete user outcome and point it at the relevant feature spec.
-Ask only a few questions where answers change scope. For visual changes, agree a
-small synthetic design before implementation. Record approved behavior and
-acceptance examples in `docs/specs/<feature>.md`, marked Proposed until shipped.
+Read the relevant feature spec and clarify only choices that change scope.
+Record approved behavior and concrete acceptance examples in that spec; mark
+proposals and deferred work explicitly. For UI changes, use the [design principles](design.md)
+and concrete synthetic examples to resolve material interaction choices before
+implementation. Include desktop/phone and light/dark references when they affect
+the design. Keep intentionally maintained design
+references under `docs/designs/<feature>/` when needed, linked from the spec.
+Never rely on screenshots of real finances or a machine-specific preview path.
 
-Keep reusable approved designs under `docs/designs/<feature>/` when needed, using
-relative links from the spec. Include desktop/phone and light/dark references
-when they materially affect the design. Never use screenshots of real finances.
-Do not rely on another chat's memory or a machine-specific preview path.
+Implement a small working slice, add meaningful regression coverage and update
+affected documentation. Use the [development guide](development.md#tests-and-checks)
+for commands and report executed, unavailable and owner-reported checks separately.
+Documentation-only edits need link/anchor and source-consistency checks, as defined
+in the root agent instructions.
 
-## Implement and finish
+Review the resulting diff for ownership/CSRF, exact money/date handling, data
+preservation, stale state, accessibility and test coverage as applicable. Fix
+findings and rerun affected checks. A self-review does not constitute an
+independent review; a fresh review is optional for risky changes.
 
-The implementation chat reads AGENTS.md plus the relevant specs, implements a
-small working slice, adds meaningful regressions, and updates affected docs.
-Run `make quickcheck` and `make check`; distinguish environment failures from
-failed assertions. Inspect synthetic desktop/phone screenshots for UI changes.
+## Hand over unfinished work
 
-Finish with a deliberate code review of the resulting diff: ownership/CSRF,
-financial/date rules, data preservation, races/stale UI, accessibility, tests and
-documentation. Fix findings and rerun affected checks. A self-review is useful but
-is not an independent review; a fresh review chat is optional for risky changes.
-No commits, branches, pushes, or merges without authorization.
+The feature spec is the durable product record. Only when work is unfinished,
+put operational context in one temporary `docs/handoffs/<feature>.md`:
 
-## Handover only at a useful boundary
+- Goal, current state, next action, explicit non-goals and remaining acceptance cases.
+- Relevant source/spec/design paths and unresolved decisions.
+- Branch/worktree, base commit and current commit state, when applicable.
+- Exact checks/results, known findings and synthetic screenshot locations.
 
-Prefer the same chat through design → implementation → verification → review.
-Start another when moving to a new feature, needing a fresh review, or handing
-off unfinished work with a clear next action. Avoid a chat per tiny step.
-
-The feature spec remains the durable product record. Put unfinished operational
-context in one temporary `docs/handoffs/<feature>.md`, linking to the spec instead
-of copying it. Include:
-
-- Goal, current state, remaining acceptance cases, and explicit non-goals.
-- Relevant source/spec/design paths and material decisions still unresolved.
-- Worktree/branch/base commit if applicable; whether work is committed.
-- Exact checks run, results, blocked checks, and synthetic screenshot locations.
-- Known review findings and the first next action.
-
-Delete the temporary handover when resolved. Do not keep a second roadmap or
-chronological diary. Completed features need current specs and evidence, not a
-permanent handover document. Store generated Playwright output in ignored
-`frontend/test-results/`; copy only intentionally maintained synthetic references
-into `docs/designs/`.
-
-A starting prompt:
-
-> Implement the agreed slice in docs/specs/FEATURE.md. Read AGENTS.md and the
-> linked design. Keep the scope small; clarify only material product decisions.
-> Use synthetic data. Update the authoritative docs, run required checks, inspect
-> the UI, review the diff, fix findings, and report any remaining limitations.
-> Do not make Git changes unless explicitly authorized.
-
-## Skills: add one when repetition earns it
-
-Keep standing conventions in AGENTS.md and behavior in specs. A future small
-`coinz-feature` skill could package the start/verify/review/handover routine above,
-linking to this document rather than duplicating it. A separate `coinz-review`
-skill is worthwhile only if a distinct review checklist repeatedly proves useful.
-Do not add orchestration scripts, plugins, or mandatory multi-agent stages now.
-Repo-local reusable skills live under `.agents/skills/<name>/SKILL.md`; see
-[official customization guidance](https://learn.chatgpt.com/docs/customization/overview)
-and [building skills](https://learn.chatgpt.com/docs/build-skills).
+Link to existing rules instead of copying them. Delete the handover when resolved.
+Generated Playwright output belongs in ignored `frontend/test-results/`; copy only
+intentionally maintained synthetic references into the design documentation.
+Keep standing conventions in agent instructions and behavior in specs. Add extra
+workflow tooling only for a demonstrated recurring need.

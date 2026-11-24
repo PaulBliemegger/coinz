@@ -1,8 +1,7 @@
 # CSV import profiles
 
-Status: implemented in source. Browser journeys and visual review remain unverified
-because the sandbox prevents local server startup; see the
-[README verification status](../../README.md#verification-status).
+Status: implemented. See [verification status](../development.md#verification-status)
+for executed checks and environment limits.
 This is the authoritative profile workflow and parsing contract. The
 [CSV import spec](csv-import.md) owns shared duplicate, provenance and commit rules.
 
@@ -245,42 +244,33 @@ atomically; preview edits alone do not write ledger entries.
 
 ## Deferred: file-managed profiles
 
-Desired future capability: define profiles in version-controlled files and make
-them available without creating each profile in the UI. Recommended design,
-subject to implementation review:
+File-managed YAML remains a desired later capability for sharing layouts and
+providing setup without the UI; no loader or reconciliation exists today.
+Versioned definitions would need stable keys, idempotent whole-file validation,
+explicit file-managed versus editable-copy ownership, and user/source availability
+rules. Invalid updates must preserve the last valid setup, and profile changes
+must never reinterpret stored import evidence. Shareable definitions must exclude
+sample rows, credentials and private user/source bindings. Exact paths, reload
+behavior and template-sharing policy remain undecided.
 
-- Read versioned YAML definitions from an explicitly configured, read-only mounted
-  directory, for example `profiles/*.yaml`. Exact paths, environment variable
-  names, and reload mechanics are undecided; no loader exists today.
-- Let deployment tooling deliver/reconcile those files. coinz need not clone a
-  repository, hold Git credentials, or run a GitOps controller. Reading mounted
-  files enables configuration as code; automated delivery/reconciliation belongs
-  to the deployment workflow ([OpenGitOps principles](https://opengitops.dev/)).
-- Use a schema version and stable profile key, independent of the display name.
-  Reapplying the same definitions is idempotent. Validate the entire update before
-  activating it; invalid definitions produce actionable configuration errors and
-  leave the last valid catalog intact. Reject ambiguous key collisions.
-- Define file-managed versus UI-managed ownership explicitly. File-managed
-  profiles are read-only in the UI; users can make an independently owned editable
-  copy. A later file update must not overwrite that copy.
-- Keep portable layout definitions separate from private user/source bindings.
-  Resolve availability through an explicit deployment policy; do not grant access
-  to another user's saved profiles, sources, or entries. Decide whether files
-  publish shared templates or per-user definitions before implementation.
-- Store the confirmed profile interpretation with import evidence, so updating,
-  removing, or reverting a file does not reinterpret history. Removing a profile
-  makes it unavailable for new imports and never deletes imported entries.
-- Include only layout/settings in shareable definitions: no sample rows, financial
-  values, credentials, or installation-specific source/user IDs. UI-created
-  profiles should eventually export to the same portable schema.
+Keep these constraints when the deferred workflow is designed:
 
-Other declarative setup candidates are source definitions and, when implemented,
-label definitions, labeling rules, and planning templates. These are ideas for
-later scope, not part of this slice. Sources currently have a UI/authenticated API
-but no declarative setup; user creation already has a CLI and deployment is already
-file-configured. Browser appearance/selection preferences remain personal UI
-settings. Transaction data belongs in private exports/backups, not configuration
-Git history; see [entry export and reimport](data-portability.md).
+- Deployment tooling supplies definitions through a read-only mount; coinz does
+  not clone repositories, hold Git credentials or run a reconciliation controller.
+- Stable keys are independent of display names. Reject ambiguous key collisions
+  before activating any update.
+- File-managed profiles are read-only in the UI. Users can create editable copies;
+  later file updates must not overwrite those copies or grant another user's data
+  through shared templates or private bindings.
+- Removing a definition makes it unavailable for new imports and never deletes
+  imported entries. Stored interpretation snapshots remain unchanged.
+- UI-created layouts should be exportable using the same future portable layout
+  schema, without financial sample values or credentials.
+
+The implemented [settings JSON](data-portability.md#settings-json) already preserves
+per-user profiles, vocabulary, sources, rules and budgets for empty-account
+restoration. It does not provide a file-managed setup workflow. Transaction data
+belongs in private exports, not configuration Git history.
 
 ## Acceptance examples
 
@@ -322,7 +312,7 @@ verification limits are listed below; all fixtures are wholly synthetic.
 
 ## Persistence and API
 
-Migration 0008 stores owned profile IDs, names, layouts and monotonically increasing
+The schema stores owned profile IDs, names, layouts and monotonically increasing
 revisions. Names are trimmed, 1–80 characters. Updating requires the current
 revision and preserves identity. No sample values belong to a profile. Each new
 batch and evidence row stores an immutable JSON layout snapshot; older evidence
@@ -371,6 +361,3 @@ file, Cancel/Escape, stable IDs/revisions, picker reuse, unchanged history, and
 light/dark editor screenshots. They also include keyboard header mapping, semicolon
 and explicit parsing presets, description Save/Cancel/Escape, draft-discard warning,
 saved-profile reuse, repeat import after edits, and light/dark synthetic screenshots.
-They are defined coverage, not completed browser assertions or visual review.
-The sandbox blocks local server startup, and the previously declined escalation
-has not been retried. See the README for the complete check results and limits.

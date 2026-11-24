@@ -10,6 +10,8 @@ pub const MAX_ROWS: usize = 1000;
 
 #[derive(Clone, Serialize)]
 pub struct Row {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub portable: Option<super::portable::Metadata>,
     pub record: usize,
     pub date: String,
     pub description: String,
@@ -45,6 +47,7 @@ pub fn parse(input: &str) -> Result<Vec<Row>> {
             ))
         })?;
         let mut row = Row {
+            portable: None,
             record: i + 2,
             date: record[0].trim().into(),
             description: record[1].trim().into(),
@@ -229,6 +232,7 @@ pub fn mapped(input: &str, layout: &Layout) -> Result<Vec<Row>> {
         .enumerate()
         .map(|(i, record)| {
             let mut row = Row {
+                portable: None,
                 record: i + 2,
                 date: record[date].trim().into(),
                 description: record[description].trim().into(),
